@@ -1,0 +1,38 @@
+{
+  "name": "zitrange",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "中文字体分包与优化工具：按 unicode-range 拆分、压缩，产出按需加载的 woff2 与 CSS",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "setup": "npm run setup:py && npm install",
+    "setup:py": "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt",
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "dev:web": "vite",
+    "dev:api": "tsx watch src/api/server.ts",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}

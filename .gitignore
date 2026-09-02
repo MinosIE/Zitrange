@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+
+# 运行时临时目录：上传的源字体、中间产物
+.tmp/
+# 处理产物：生成的 woff2/woff/ttf 分片
+output/
+.DS_Store
+*.log
+demo/
