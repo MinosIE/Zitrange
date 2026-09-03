@@ -22,7 +22,6 @@ export function FontSourcePanel({
 }) {
   const [drag, setDrag] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [path, setPath] = useState('');
   const depth = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -34,20 +33,6 @@ export function FontSourcePanel({
       const up = await uploadFont(file);
       const info = await inspectFont(up.path);
       onLoaded({ ...info, path: up.path });
-    } catch (e: any) {
-      onError(String(e?.message ?? e));
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function ingestPath() {
-    const p = path.trim();
-    if (!p) return;
-    setUploading(true);
-    try {
-      const info = await inspectFont(p);
-      onLoaded({ ...info, path: p });
     } catch (e: any) {
       onError(String(e?.message ?? e));
     } finally {
@@ -142,28 +127,6 @@ export function FontSourcePanel({
             )}
           </div>
         )}
-
-        <details>
-          <summary className="cursor-pointer select-none text-[11px] text-ink-400 hover:text-ink-700">
-            用本地路径指定
-          </summary>
-          <div className="flex gap-2 pt-2">
-            <input
-              className="zr-field zr-num flex-1 text-[12px]"
-              value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="demo/FZJinHJW.TTF"
-            />
-            <button
-              type="button"
-              className="zr-btn zr-btn-ghost shrink-0 px-3 text-[12px]"
-              onClick={ingestPath}
-              disabled={locked || !path.trim()}
-            >
-              读取
-            </button>
-          </div>
-        </details>
       </div>
     </Panel>
   );

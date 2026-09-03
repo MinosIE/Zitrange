@@ -282,13 +282,7 @@ export default function App() {
                 </Panel>
 
                 <Panel title="产物预览" delay={180}>
-                  <OutputPanel
-                    jobId={result.jobId}
-                    css={result.css}
-                    chunks={result.chunks}
-                    format={format[0]}
-                    sampleText={sampleText || text}
-                  />
+                  <OutputPanel css={result.css} />
                 </Panel>
               </>
             )}
