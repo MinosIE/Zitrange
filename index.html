@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>中文字体子集化 · unicode-range 拆分工具</title>
+    <script>
+      // 在样式生效前定好主题，避免暗色用户刷新时闪一下白
+      (function () {
+        try {
+          var t = localStorage.getItem('zr-theme');
+          if (t !== 'light' && t !== 'dark') {
+            t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.dataset.theme = t;
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

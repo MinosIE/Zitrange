@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { extractCharFreq, FALLBACK_SIZES } from '@core/charset';
 import type { OutputFormat, PartitionStrategy } from '@core/types';
 import { processFont, type ProcessResult } from './api';
+import { useTheme } from './useTheme';
 import { CharSourcePanel } from './components/CharSourcePanel';
 import { FontSourcePanel, type LoadedFont } from './components/FontSourcePanel';
 import { StrategyPanel } from './components/StrategyPanel';
@@ -9,7 +10,7 @@ import { SizeComparison } from './components/SizeComparison';
 import { AdvicePanel } from './components/AdvicePanel';
 import { ChunkTable } from './components/ChunkTable';
 import { OutputPanel } from './components/OutputPanel';
-import { Empty, Note, Panel, Stat } from './components/ui';
+import { Empty, Note, Panel, Stat, ThemeToggle } from './components/ui';
 
 const DEFAULT_STRATEGY: PartitionStrategy = {
   mode: 'hybrid',
@@ -19,14 +20,10 @@ const DEFAULT_STRATEGY: PartitionStrategy = {
   fallback: 'common-3500',
 };
 
-const SAMPLE_TEXT =
-  '中文网页字体优化是一种针对中文字体文件体积过大的有效方案。' +
-  '通过按使用频率拆分并配合 unicode-range，浏览器只会下载当前页面真正需要的字形，' +
-  '首屏不再被迫加载数 MB 的完整字体。';
-
 export default function App() {
+  const { theme, toggle } = useTheme();
   const [font, setFont] = useState<LoadedFont | null>(null);
-  const [text, setText] = useState(SAMPLE_TEXT);
+  const [text, setText] = useState('');
   const [sampleText, setSampleText] = useState('');
   const [format, setFormat] = useState<OutputFormat[]>(['woff2']);
   const [strategy, setStrategy] = useState<PartitionStrategy>(DEFAULT_STRATEGY);
@@ -76,166 +73,173 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-6 py-7">
-      <header className="mb-5 flex items-end justify-between border-b border-line pb-4">
-        <div>
-          <div className="font-song text-[26px] font-bold leading-none tracking-wide text-paper">
-            Zitrange
+    <div className="flex justify-center px-6 py-7">
+      <div className="flex w-full max-w-[1440px] flex-col gap-4">
+        <header className="flex items-end justify-between gap-4 border-b border-line pb-4">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <h1 className="font-song text-[26px] font-bold leading-none tracking-wide text-ink-900">
+              Zitrange
+            </h1>
+            <p className="text-[11px] text-ink-400">
+              中文字体分包与优化 · 本地运行，字体文件全程不出本机
+            </p>
           </div>
-          <div className="mt-2 text-[11px] text-paper-mute">
-            中文字体分包与优化 · 本地运行，字体文件全程不出本机
+
+          <div className="flex shrink-0 items-end gap-3">
+            <div className="flex flex-col items-end gap-1">
+              <span className="zr-eyebrow">ENGINE</span>
+              <span className="flex items-center gap-1.5 text-[11px] text-ink-500">
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    busy ? 'zr-dot-live bg-brand' : 'bg-success'
+                  }`}
+                />
+                {busy ? '处理中' : '就绪'}
+              </span>
+            </div>
+            <ThemeToggle theme={theme} onToggle={toggle} />
           </div>
-        </div>
-        <div className="text-right">
-          <div className="zr-eyebrow">ENGINE</div>
-          <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[11px]">
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                busy ? 'zr-dot-live bg-brass-400' : 'bg-jade-400'
-              }`}
+        </header>
+
+        {error && (
+          <div className="rounded-lg border-l-2 border-danger bg-danger-bg px-3 py-2 text-[12px] text-danger">
+            {error}
+          </div>
+        )}
+
+        {/* minmax(0,1fr) 而非 1fr：1fr 的最小尺寸是 auto，会被 <pre> 与长
+            unicode-range 撑破列宽，吃掉容器右侧 padding。 */}
+        <div className="grid items-start gap-4 lg:grid-cols-[380px_minmax(0,1fr)]">
+          {/* ---- 左：配置 ---- */}
+          <div className="flex min-w-0 flex-col gap-4">
+            <FontSourcePanel font={font} onLoaded={setFont} onError={setError} busy={busy} />
+            <CharSourcePanel
+              text={text}
+              onTextChange={setText}
+              sampleText={sampleText}
+              onSampleChange={setSampleText}
             />
-            <span className="text-paper-dim">{busy ? '处理中' : '就绪'}</span>
+            <StrategyPanel
+              font={font}
+              charCount={charCount}
+              strategy={strategy}
+              onStrategy={setStrategy}
+              format={format}
+              onToggleFormat={toggleFormat}
+            />
+
+            <button
+              type="button"
+              className="zr-btn zr-btn-primary w-full py-2.5 text-[13px]"
+              onClick={doProcess}
+              disabled={busy || !font}
+            >
+              {busy ? (
+                <>
+                  <span className="zr-sweep h-1 w-24 rounded-full" />
+                  处理中…
+                </>
+              ) : (
+                '生成分片'
+              )}
+            </button>
+            {!font && <span className="text-center text-[10px] text-ink-300">先加载一个字体文件</span>}
           </div>
-        </div>
-      </header>
 
-      {error && (
-        <div className="mb-4 rounded-[3px] border-l-2 border-danger-500 bg-danger-500/[0.08] px-3 py-2 text-[12px] text-danger-400">
-          {error}
-        </div>
-      )}
-
-      <div className="grid items-start gap-4 lg:grid-cols-[360px_1fr]">
-        {/* ---- 左：配置 ---- */}
-        <div className="space-y-4">
-          <FontSourcePanel
-            font={font}
-            onLoaded={setFont}
-            onError={setError}
-            busy={busy}
-          />
-          <CharSourcePanel
-            text={text}
-            onTextChange={setText}
-            sampleText={sampleText}
-            onSampleChange={setSampleText}
-          />
-          <StrategyPanel
-            font={font}
-            charCount={charCount}
-            strategy={strategy}
-            onStrategy={setStrategy}
-            format={format}
-            onToggleFormat={toggleFormat}
-          />
-
-          <button
-            type="button"
-            className="zr-btn zr-btn-primary w-full py-2.5 text-[13px]"
-            onClick={doProcess}
-            disabled={busy || !font}
-          >
-            {busy ? (
-              <>
-                <span className="zr-sweep h-1 w-24 rounded-full" />
-                处理中…
-              </>
+          {/* ---- 右：结果 ---- */}
+          <div className="flex min-w-0 flex-col gap-4">
+            {!result ? (
+              <Panel title="结果" delay={180}>
+                <Empty>
+                  加载字体并生成分片后，这里会给出体积对比、分片清单，
+                  <br />
+                  以及可以直接复制的 @font-face CSS。
+                </Empty>
+              </Panel>
             ) : (
-              '生成分片'
-            )}
-          </button>
-          {!font && (
-            <div className="text-center text-[10px] text-paper-mute">先加载一个字体文件</div>
-          )}
-        </div>
-
-        {/* ---- 右：结果 ---- */}
-        <div className="space-y-4">
-          {!result ? (
-            <Panel title="结果" delay={180}>
-              <Empty>
-                加载字体并生成分片后，这里会给出体积对比、分片清单，
-                <br />
-                以及可以直接复制的 @font-face CSS。
-              </Empty>
-            </Panel>
-          ) : (
-            <>
-              <Panel
-                title="体积对比"
-                delay={0}
-                hint={<span className="zr-num">字符集 {result.charsetSize.toLocaleString()} 字</span>}
-              >
-                <SizeComparison
-                  original={font?.bytes ?? result.font.bytes}
-                  total={totalOut}
-                  actual={result.simulation ? result.simulation.totalBytes : null}
-                  hitIndices={result.simulation?.hitIndices ?? []}
-                  chunkCount={result.chunks.length}
-                />
-                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <Stat label="分片数" value={String(result.chunks.length)} />
-                  <Stat
-                    label="模拟命中"
-                    value={
-                      result.simulation
-                        ? `${result.simulation.hitIndices.length}/${result.chunks.length}`
-                        : '—'
-                    }
-                  />
-                  <Stat
-                    label="字符覆盖率"
-                    value={
-                      result.simulation
-                        ? `${(result.simulation.coverage * 100).toFixed(1)}%`
-                        : '—'
-                    }
-                    tone="jade"
-                  />
-                  <Stat
-                    label="分片合计"
-                    value={`${(totalOut / 1024).toFixed(0)} KB`}
-                    tone="brass"
-                  />
-                </div>
-              </Panel>
-
-              <Panel title="智能建议" delay={60}>
-                <AdvicePanel rec={result.recommendation} />
-                {result.issues.length > 0 && (
-                  <div className="mt-3 space-y-1.5 border-t border-line-soft pt-3">
-                    {result.issues.map((i) => (
-                      <Note key={i.id} level={i.level}>
-                        {i.text}
-                      </Note>
-                    ))}
+              <>
+                <Panel
+                  title="体积对比"
+                  delay={0}
+                  hint={
+                    <span className="zr-num">字符集 {result.charsetSize.toLocaleString()} 字</span>
+                  }
+                >
+                  <div className="flex flex-col gap-4">
+                    <SizeComparison
+                      original={font?.bytes ?? result.font.bytes}
+                      total={totalOut}
+                      actual={result.simulation ? result.simulation.totalBytes : null}
+                      hitIndices={result.simulation?.hitIndices ?? []}
+                      chunkCount={result.chunks.length}
+                    />
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <Stat label="分片数" value={String(result.chunks.length)} />
+                      <Stat
+                        label="模拟命中"
+                        value={
+                          result.simulation
+                            ? `${result.simulation.hitIndices.length}/${result.chunks.length}`
+                            : '—'
+                        }
+                      />
+                      <Stat
+                        label="字符覆盖率"
+                        value={
+                          result.simulation
+                            ? `${(result.simulation.coverage * 100).toFixed(1)}%`
+                            : '—'
+                        }
+                        tone="success"
+                      />
+                      <Stat
+                        label="分片合计"
+                        value={`${(totalOut / 1024).toFixed(0)} KB`}
+                        tone="brand"
+                      />
+                    </div>
                   </div>
-                )}
-              </Panel>
+                </Panel>
 
-              <Panel
-                title="分片清单"
-                delay={120}
-                hint={<span className="text-paper-mute">高亮行 = 样本文本会命中的片</span>}
-              >
-                <ChunkTable
-                  chunks={result.chunks}
-                  format={format[0]}
-                  hitIndices={result.simulation?.hitIndices ?? []}
-                />
-              </Panel>
+                <Panel title="智能建议" delay={60}>
+                  <div className="flex flex-col gap-3">
+                    <AdvicePanel rec={result.recommendation} />
+                    {result.issues.length > 0 && (
+                      <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+                        {result.issues.map((i) => (
+                          <Note key={i.id} level={i.level}>
+                            {i.text}
+                          </Note>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </Panel>
 
-              <Panel title="产物预览" delay={180}>
-                <OutputPanel
-                  jobId={result.jobId}
-                  css={result.css}
-                  chunks={result.chunks}
-                  format={format[0]}
-                  sampleText={sampleText || text}
-                />
-              </Panel>
-            </>
-          )}
+                <Panel
+                  title="分片清单"
+                  delay={120}
+                  hint={<span className="text-ink-400">高亮行 = 样本文本会命中的片</span>}
+                >
+                  <ChunkTable
+                    chunks={result.chunks}
+                    format={format[0]}
+                    hitIndices={result.simulation?.hitIndices ?? []}
+                  />
+                </Panel>
+
+                <Panel title="产物预览" delay={180}>
+                  <OutputPanel
+                    jobId={result.jobId}
+                    css={result.css}
+                    chunks={result.chunks}
+                    format={format[0]}
+                    sampleText={sampleText || text}
+                  />
+                </Panel>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

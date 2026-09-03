@@ -7,7 +7,7 @@ import type {
   PartitionStrategy,
   StrategyMode,
 } from '@core/types';
-import { ChipGroup, Field, Note, NumberField, Panel, Segmented, Select } from './ui';
+import { ChipGroup, Dropdown, Field, Note, NumberField, Panel, Segmented } from './ui';
 
 const MODES: { value: StrategyMode; label: string }[] = [
   { value: 'hybrid', label: '混合' },
@@ -51,6 +51,25 @@ export function StrategyPanel({
   onToggleFormat: (f: OutputFormat) => void;
   delay?: number;
 }) {
+  // 切换模式时联动兜底字表：站点强制不兜底，字频不允许为空
+  const handleModeChange = (mode: StrategyMode) => {
+    const next: PartitionStrategy = { ...strategy, mode };
+    if (mode === 'site') next.fallback = 'none';
+    else if (mode === 'frequency' && strategy.fallback === 'none') {
+      next.fallback = 'common-3500';
+    }
+    onStrategy(next);
+  };
+
+  // 字频模式下，「不兜底」会失去按通用字频覆盖的能力，标注「不推荐」引导但不禁止
+  const fallbackOptions = useMemo(
+    () =>
+      strategy.mode === 'frequency'
+        ? FALLBACKS.map((o) => (o.value === 'none' ? { ...o, note: '不推荐' } : o))
+        : FALLBACKS,
+    [strategy.mode],
+  );
+
   // 校验是 core 里的纯函数，参数一改即时出结论，不打断输入
   const issues = useMemo(
     () => validate({ charCount, strategy, format, font: font ?? undefined }),
@@ -59,65 +78,73 @@ export function StrategyPanel({
 
   return (
     <Panel step="03" title="分片策略" delay={delay}>
-      <Field label="输出格式">
-        <ChipGroup values={format} onToggle={onToggleFormat} options={FORMATS} />
-      </Field>
-
-      <div className="mt-3.5">
-        <Field label="分片模式">
-          <Segmented
-            value={strategy.mode}
-            onChange={(mode) => onStrategy({ ...strategy, mode })}
-            options={MODES}
-          />
+      <div className="flex flex-col gap-4">
+        <Field label="输出格式">
+          <ChipGroup values={format} onToggle={onToggleFormat} options={FORMATS} />
         </Field>
-        <div className="mt-1.5 text-[10px] leading-snug text-paper-mute">
-          {MODE_HINT[strategy.mode]}
+
+        <div className="flex flex-col gap-1.5">
+          <Field label="分片模式">
+            <Segmented
+              value={strategy.mode}
+              onChange={handleModeChange}
+              options={MODES}
+            />
+          </Field>
+          <span className="text-[10px] leading-snug text-ink-300">
+            {MODE_HINT[strategy.mode]}
+          </span>
         </div>
-      </div>
 
-      <div className="mt-3.5 grid grid-cols-3 gap-2.5">
-        <Field label="单片字数" hint="默认 200">
-          <NumberField
-            value={strategy.baseSize}
-            onChange={(baseSize) => onStrategy({ ...strategy, baseSize })}
-          />
-        </Field>
-        <Field label="递增系数" hint="1 = 固定分片">
-          <NumberField
-            value={strategy.growth}
-            step={0.05}
-            min={0}
-            onChange={(growth) => onStrategy({ ...strategy, growth })}
-          />
-        </Field>
-        <Field label="单片上限">
-          <NumberField
-            value={strategy.maxSize}
-            onChange={(maxSize) => onStrategy({ ...strategy, maxSize })}
-          />
-        </Field>
-      </div>
+        <div className="grid grid-cols-3 gap-2.5">
+          <Field label="单片字数" hint="默认 200">
+            <NumberField
+              value={strategy.baseSize}
+              onChange={(baseSize) => onStrategy({ ...strategy, baseSize })}
+            />
+          </Field>
+          <Field label="递增系数" hint="1 = 固定分片">
+            <NumberField
+              value={strategy.growth}
+              step={0.05}
+              min={0}
+              onChange={(growth) => onStrategy({ ...strategy, growth })}
+            />
+          </Field>
+          <Field label="单片上限">
+            <NumberField
+              value={strategy.maxSize}
+              onChange={(maxSize) => onStrategy({ ...strategy, maxSize })}
+            />
+          </Field>
+        </div>
 
-      <div className="mt-3.5">
-        <Field label="兜底字表" hint="站点未覆盖的字，按通用字频补全">
-          <Select
+        <Field
+          label="兜底字表"
+          hint={
+            strategy.mode === 'site'
+              ? '站点模式只用你提供的字，不补兜底'
+              : '站点未覆盖的字，按通用字频补全'
+          }
+        >
+          <Dropdown
             value={strategy.fallback}
             onChange={(fallback) => onStrategy({ ...strategy, fallback })}
-            options={FALLBACKS}
+            options={fallbackOptions}
+            disabled={strategy.mode === 'site'}
           />
         </Field>
-      </div>
 
-      {issues.length > 0 && (
-        <div className="mt-3.5 space-y-1.5 border-t border-line-soft pt-3">
-          {issues.map((i) => (
-            <Note key={i.id} level={i.level}>
-              {i.text}
-            </Note>
-          ))}
-        </div>
-      )}
+        {issues.length > 0 && (
+          <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+            {issues.map((i) => (
+              <Note key={i.id} level={i.level}>
+                {i.text}
+              </Note>
+            ))}
+          </div>
+        )}
+      </div>
     </Panel>
   );
 }

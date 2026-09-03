@@ -14,14 +14,14 @@ export function ChunkTable({
   const hit = new Set(hitIndices);
 
   return (
-    <div className="max-h-[280px] overflow-auto rounded-[3px] border border-line-soft">
+    <div className="scrollbar-hide max-h-[280px] overflow-auto rounded-xl border border-line">
       <table className="w-full text-[11px]">
-        <thead className="sticky top-0 z-10 bg-ink-800 text-[10px] uppercase tracking-wide text-paper-mute">
+        <thead className="sticky top-0 z-10 bg-surface-2 text-[10px] uppercase tracking-wide text-ink-400">
           <tr>
-            <th className="px-2.5 py-1.5 text-left font-normal">#</th>
-            <th className="px-2 py-1.5 text-right font-normal">字数</th>
-            <th className="px-2 py-1.5 text-left font-normal">unicode-range</th>
-            <th className="px-2.5 py-1.5 text-right font-normal">大小</th>
+            <th className="px-2.5 py-2 text-left font-medium">#</th>
+            <th className="px-2 py-2 text-right font-medium">字数</th>
+            <th className="px-2 py-2 text-left font-medium">unicode-range</th>
+            <th className="px-2.5 py-2 text-right font-medium">大小</th>
           </tr>
         </thead>
         <tbody>
@@ -31,29 +31,25 @@ export function ChunkTable({
             return (
               <tr
                 key={c.index}
-                className={`border-t border-line-soft/70 ${on ? 'bg-brass-500/[0.07]' : ''}`}
+                className={`border-t border-line ${on ? 'bg-brand-100' : 'hover:bg-surface-2'}`}
               >
-                <td className="px-2.5 py-1.5">
+                <td className="px-2.5 py-2">
                   <span className="flex items-center gap-1.5">
                     <span
                       className={`inline-block h-2.5 w-[2px] rounded-full ${
-                        on ? 'bg-brass-400' : 'bg-ink-600'
+                        on ? 'bg-brand' : 'bg-ink-300'
                       }`}
                     />
-                    <span className={`zr-num ${on ? 'text-brass-300' : 'text-paper-mute'}`}>
+                    <span className={`zr-num ${on ? 'font-medium text-brand' : 'text-ink-400'}`}>
                       {String(c.index).padStart(2, '0')}
                     </span>
                   </span>
                 </td>
-                <td className="zr-num px-2 py-1.5 text-right text-paper-dim">
-                  {c.codepoints.length}
-                </td>
-                <td className="zr-num max-w-0 truncate px-2 py-1.5 text-paper-mute">
+                <td className="zr-num px-2 py-2 text-right text-ink-700">{c.codepoints.length}</td>
+                <td className="zr-num max-w-0 truncate px-2 py-2 text-ink-400">
                   {c.unicodeRange}
                 </td>
-                <td className="zr-num px-2.5 py-1.5 text-right text-paper-dim">
-                  {fmtBytes(bytes)}
-                </td>
+                <td className="zr-num px-2.5 py-2 text-right text-ink-700">{fmtBytes(bytes)}</td>
               </tr>
             );
           })}

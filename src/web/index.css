@@ -1,97 +1,250 @@
 @import "tailwindcss";
 
-/* ---------------------------------------------------------------
-   Zitrange Design Tokens
-   调性：「字坊 · 精密排印台」
-   深墨底 + 黄铜（活字/铅字）+ 冷青（数据）
-   中文衬线承载标题与关键数字，等宽体承载一切数据
-   --------------------------------------------------------------- */
+/* =================================================================
+   Zitrange 设计令牌 —— 纪律模式
+   调性：「字坊 · 精密排印台」（黄铜基调，明暗双版）
+   亮色：暖白宣纸底 + 深黄铜（保证对比度）
+   暗色：深墨底 + 提亮黄铜
+   同一色相两套明度，语义 token 名不变，组件不写死颜色
+   ================================================================= */
+
+:root {
+  /* ---- Light 原始值 ---- */
+  --l-page: #faf8f4;
+  --l-surface: #ffffff;
+  --l-surface-2: #f4f1ea;
+  --l-border: #e5dfd3;
+  --l-border-strong: #d4ccbc;
+  --l-ink-900: #1f1b14;
+  --l-ink-700: #3d372c;
+  --l-ink-500: #5c564a;
+  --l-ink-400: #7c7566;
+  --l-ink-300: #9c9585;
+  --l-brand: #b4791f;
+  --l-brand-hover: #96631a;
+  --l-brand-100: #f7ebd3;
+  --l-brand-50: #fcf6ea;
+  --l-accent: #0f9c8c;
+  --l-success: #0f8a5f;
+  --l-success-bg: #def7ec;
+  --l-warning: #b45309;
+  --l-warning-bg: #fef3c7;
+  --l-danger: #c81e1e;
+  --l-danger-bg: #fde2e1;
+  --l-info: #1c64f2;
+  --l-info-bg: #e1effe;
+  --l-shadow: 31, 27, 20;
+  --l-grid: 31, 27, 20;
+  --l-grid-alpha: 0.04;
+  --l-noise: 0.14;
+
+  /* ---- Dark 原始值 ---- */
+  --d-page: #0a0c0f;
+  --d-surface: #12151a;
+  --d-surface-2: #191d24;
+  --d-border: #262b34;
+  --d-border-strong: #363d49;
+  --d-ink-900: #ede9e1;
+  --d-ink-700: #c9c4ba;
+  --d-ink-500: #a29c91;
+  --d-ink-400: #83756a;
+  --d-ink-300: #6a655c;
+  --d-brand: #f5b342;
+  --d-brand-hover: #ffc76b;
+  --d-brand-100: #3a2a0e;
+  --d-brand-50: #241a08;
+  --d-accent: #5fd3c0;
+  --d-success: #4ade80;
+  --d-success-bg: #0b3b2a;
+  --d-warning: #fbbf24;
+  --d-warning-bg: #4a2e05;
+  --d-danger: #f87171;
+  --d-danger-bg: #4c1d1d;
+  --d-info: #60a5fa;
+  --d-info-bg: #132c5a;
+  --d-shadow: 0, 0, 0;
+  --d-grid: 255, 255, 255;
+  --d-grid-alpha: 0.022;
+  --d-noise: 0.32;
+}
+
+/* 语义层：默认取 Light */
+:root {
+  --c-page: var(--l-page);
+  --c-surface: var(--l-surface);
+  --c-surface-2: var(--l-surface-2);
+  --c-border: var(--l-border);
+  --c-border-strong: var(--l-border-strong);
+  --c-ink-900: var(--l-ink-900);
+  --c-ink-700: var(--l-ink-700);
+  --c-ink-500: var(--l-ink-500);
+  --c-ink-400: var(--l-ink-400);
+  --c-ink-300: var(--l-ink-300);
+  --c-brand: var(--l-brand);
+  --c-brand-hover: var(--l-brand-hover);
+  --c-brand-100: var(--l-brand-100);
+  --c-brand-50: var(--l-brand-50);
+  --c-accent: var(--l-accent);
+  --c-success: var(--l-success);
+  --c-success-bg: var(--l-success-bg);
+  --c-warning: var(--l-warning);
+  --c-warning-bg: var(--l-warning-bg);
+  --c-danger: var(--l-danger);
+  --c-danger-bg: var(--l-danger-bg);
+  --c-info: var(--l-info);
+  --c-info-bg: var(--l-info-bg);
+  --c-shadow: var(--l-shadow);
+  --c-grid: var(--l-grid);
+  --c-grid-alpha: var(--l-grid-alpha);
+  --c-noise: var(--l-noise);
+}
+
+/* 跟随系统偏好（仅当未显式指定 data-theme 时） */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --c-page: var(--d-page);
+    --c-surface: var(--d-surface);
+    --c-surface-2: var(--d-surface-2);
+    --c-border: var(--d-border);
+    --c-border-strong: var(--d-border-strong);
+    --c-ink-900: var(--d-ink-900);
+    --c-ink-700: var(--d-ink-700);
+    --c-ink-500: var(--d-ink-500);
+    --c-ink-400: var(--d-ink-400);
+    --c-ink-300: var(--d-ink-300);
+    --c-brand: var(--d-brand);
+    --c-brand-hover: var(--d-brand-hover);
+    --c-brand-100: var(--d-brand-100);
+    --c-brand-50: var(--d-brand-50);
+    --c-accent: var(--d-accent);
+    --c-success: var(--d-success);
+    --c-success-bg: var(--d-success-bg);
+    --c-warning: var(--d-warning);
+    --c-warning-bg: var(--d-warning-bg);
+    --c-danger: var(--d-danger);
+    --c-danger-bg: var(--d-danger-bg);
+    --c-info: var(--d-info);
+    --c-info-bg: var(--d-info-bg);
+    --c-shadow: var(--d-shadow);
+    --c-grid: var(--d-grid);
+    --c-grid-alpha: var(--d-grid-alpha);
+    --c-noise: var(--d-noise);
+  }
+}
+
+/* 显式暗色 */
+:root[data-theme='dark'] {
+  --c-page: var(--d-page);
+  --c-surface: var(--d-surface);
+  --c-surface-2: var(--d-surface-2);
+  --c-border: var(--d-border);
+  --c-border-strong: var(--d-border-strong);
+  --c-ink-900: var(--d-ink-900);
+  --c-ink-700: var(--d-ink-700);
+  --c-ink-500: var(--d-ink-500);
+  --c-ink-400: var(--d-ink-400);
+  --c-ink-300: var(--d-ink-300);
+  --c-brand: var(--d-brand);
+  --c-brand-hover: var(--d-brand-hover);
+  --c-brand-100: var(--d-brand-100);
+  --c-brand-50: var(--d-brand-50);
+  --c-accent: var(--d-accent);
+  --c-success: var(--d-success);
+  --c-success-bg: var(--d-success-bg);
+  --c-warning: var(--d-warning);
+  --c-warning-bg: var(--d-warning-bg);
+  --c-danger: var(--d-danger);
+  --c-danger-bg: var(--d-danger-bg);
+  --c-info: var(--d-info);
+  --c-info-bg: var(--d-info-bg);
+  --c-shadow: var(--d-shadow);
+  --c-grid: var(--d-grid);
+  --c-grid-alpha: var(--d-grid-alpha);
+  --c-noise: var(--d-noise);
+}
+
+/* 注册为 Tailwind utility：值引用 CSS 变量，切主题时自动生效，无需 dark: 前缀 */
 @theme {
-  /* 墨色：由深到浅 */
-  --color-ink-950: #07080a;
-  --color-ink-900: #0b0d11;
-  --color-ink-850: #101319;
-  --color-ink-800: #151920;
-  --color-ink-700: #1d222b;
-  --color-ink-600: #272d38;
-  --color-ink-500: #353d4a;
+  --color-page: var(--c-page);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-line: var(--c-border);
+  --color-line-strong: var(--c-border-strong);
 
-  /* 黄铜：主强调色，取自铅活字与铜模 */
-  --color-brass-300: #ffd894;
-  --color-brass-400: #ffc76b;
-  --color-brass-500: #f5b342;
-  --color-brass-600: #db9526;
-  --color-brass-700: #a66c15;
+  --color-ink-900: var(--c-ink-900);
+  --color-ink-700: var(--c-ink-700);
+  --color-ink-500: var(--c-ink-500);
+  --color-ink-400: var(--c-ink-400);
+  --color-ink-300: var(--c-ink-300);
 
-  /* 冷青：命中 / 数据 / 成功态 */
-  --color-jade-300: #8fe6d6;
-  --color-jade-400: #5fd3c0;
-  --color-jade-500: #35b7a3;
+  --color-brand: var(--c-brand);
+  --color-brand-hover: var(--c-brand-hover);
+  --color-brand-100: var(--c-brand-100);
+  --color-brand-50: var(--c-brand-50);
+  --color-accent: var(--c-accent);
 
-  --color-danger-400: #ff8a7a;
-  --color-danger-500: #ff6f5e;
+  --color-success: var(--c-success);
+  --color-success-bg: var(--c-success-bg);
+  --color-warning: var(--c-warning);
+  --color-warning-bg: var(--c-warning-bg);
+  --color-danger: var(--c-danger);
+  --color-danger-bg: var(--c-danger-bg);
+  --color-info: var(--c-info);
+  --color-info-bg: var(--c-info-bg);
 
-  /* 暖白（宣纸）文本层级 */
-  --color-paper: #ede9e1;
-  --color-paper-dim: #a2a8b3;
-  --color-paper-mute: #6c7482;
-
-  /* 分隔线 */
-  --color-line: #232935;
-  --color-line-soft: #1a1f28;
+  /* 阴影三档：低透明度 + 大模糊，阴影只表达层级 */
+  --shadow-soft: 0 1px 2px rgba(var(--c-shadow), 0.04), 0 2px 8px rgba(var(--c-shadow), 0.04);
+  --shadow-card: 0 1px 3px rgba(var(--c-shadow), 0.06), 0 8px 24px rgba(var(--c-shadow), 0.06);
+  --shadow-lift: 0 2px 4px rgba(var(--c-shadow), 0.06), 0 16px 40px rgba(var(--c-shadow), 0.1);
 
   --font-song: "Songti SC", "STSong", "Source Han Serif SC", "Noto Serif CJK SC", "SimSun", serif;
   --font-hei: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Menlo", "Consolas", ui-monospace, monospace;
 }
 
-:root {
-  color-scheme: dark;
-}
+/* ------------------------------------------------------------------ */
+/* 基础                                                                */
+/* ------------------------------------------------------------------ */
 
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  background-color: var(--color-ink-950);
-  color: var(--color-paper);
+  background-color: var(--c-page);
+  color: var(--c-ink-900);
   font-family: var(--font-hei);
+  font-size: 13px;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "tnum" 1;
+  font-feature-settings: 'tnum' 1;
+  transition: background-color 0.24s ease, color 0.24s ease;
 }
 
-/* 背景氛围：顶部暖光 + 坐标纸网格（伪元素，不拦截交互） */
+/* 坐标纸网格 + 噪点：仅作氛围，不拦截交互 */
 body::before {
-  content: "";
+  content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
   background-image:
-    radial-gradient(1000px 460px at 10% -10%, rgba(245, 179, 66, 0.075), transparent 70%),
-    radial-gradient(760px 380px at 96% 4%, rgba(95, 211, 192, 0.045), transparent 72%),
-    linear-gradient(to right, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
-  background-size:
-    auto,
-    auto,
-    32px 32px,
-    32px 32px;
+    linear-gradient(to right, rgba(var(--c-grid), var(--c-grid-alpha)) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(var(--c-grid), var(--c-grid-alpha)) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
-/* 噪点：压住纯色渐变的塑料感 */
 body::after {
-  content: "";
+  content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.35;
+  opacity: var(--c-noise);
   mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
 }
@@ -101,7 +254,16 @@ body::after {
   z-index: 1;
 }
 
-/* 滚动条：细窄、低对比，不抢内容 */
+/* 内嵌滚动区隐藏滚动条（纪律模式红线） */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 主滚动条：细窄低调 */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -110,19 +272,26 @@ body::after {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #262d38;
+  background: var(--c-border-strong);
   border-radius: 999px;
   border: 3px solid transparent;
   background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #3a4453;
-  background-clip: content-box;
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-/* ---------------------------------------------------------------
-   动画
-   --------------------------------------------------------------- */
+/* ------------------------------------------------------------------ */
+/* 动画                                                                */
+/* ------------------------------------------------------------------ */
+
 @keyframes zr-rise {
   from {
     opacity: 0;
@@ -162,44 +331,56 @@ body::after {
   }
 }
 
+@keyframes zr-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* 组件（纪律模式：零 margin，间距一律 flex/grid + gap）                */
+/* ------------------------------------------------------------------ */
+
 @layer components {
-  /* 面板：细边框 + 极浅内高光，像一块金属托板 */
   .zr-panel {
-    position: relative;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(255, 255, 255, 0)) var(--color-ink-850);
-    border: 1px solid var(--color-line);
-    border-radius: 4px;
-    box-shadow:
-      0 1px 0 0 rgba(255, 255, 255, 0.03) inset,
-      0 8px 24px -16px rgba(0, 0, 0, 0.9);
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-card);
+    min-width: 0;
   }
 
-  /* 面板序号标签：左上角的细刻字 */
   .zr-eyebrow {
     font-family: var(--font-mono);
     font-size: 10px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: var(--color-paper-mute);
+    color: var(--c-ink-300);
   }
 
   .zr-rise {
-    animation: zr-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: zr-rise 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 
   .zr-grow {
     transform-origin: left center;
-    animation: zr-grow 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: zr-grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 
-  /* 表格化数字：等宽 + 制表对齐 */
+  .zr-pop {
+    animation: zr-pop 0.14s ease-out both;
+  }
+
   .zr-num {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
 
-  /* 巨号数字：宋体，中文排印的重量感 */
   .zr-figure {
     font-family: var(--font-song);
     font-weight: 700;
@@ -212,83 +393,65 @@ body::after {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.5rem;
-    border-radius: 3px;
+    gap: 8px;
+    border-radius: 8px;
     font-size: 13px;
     font-weight: 500;
-    letter-spacing: 0.02em;
-    transition:
-      background-color 0.16s ease,
-      border-color 0.16s ease,
-      color 0.16s ease,
-      transform 0.16s ease,
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease,
       box-shadow 0.16s ease;
     cursor: pointer;
     user-select: none;
+    min-width: 0;
   }
   .zr-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
   }
-  .zr-btn:not(:disabled):active {
-    transform: translateY(1px);
-  }
 
   .zr-btn-primary {
-    background: linear-gradient(180deg, var(--color-brass-400), var(--color-brass-600));
-    color: #2a1c04;
-    font-weight: 700;
-    box-shadow: 0 6px 18px -10px rgba(245, 179, 66, 0.75);
+    background: var(--c-brand);
+    color: var(--l-surface);
+    font-weight: 600;
+    box-shadow: var(--shadow-soft);
   }
   .zr-btn-primary:not(:disabled):hover {
-    background: linear-gradient(180deg, var(--color-brass-300), var(--color-brass-500));
+    background: var(--c-brand-hover);
   }
 
   .zr-btn-ghost {
-    background: var(--color-ink-800);
-    border: 1px solid var(--color-line);
-    color: var(--color-paper-dim);
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    color: var(--c-ink-700);
   }
   .zr-btn-ghost:not(:disabled):hover {
-    border-color: var(--color-ink-500);
-    color: var(--color-paper);
-    background: var(--color-ink-700);
+    border-color: var(--c-border-strong);
+    background: var(--c-surface-2);
   }
 
   .zr-field {
     width: 100%;
-    background: var(--color-ink-900);
-    border: 1px solid var(--color-line);
-    border-radius: 3px;
-    color: var(--color-paper);
+    min-width: 0;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 8px;
+    color: var(--c-ink-900);
     font-size: 13px;
-    padding: 0.4rem 0.55rem;
-    transition:
-      border-color 0.15s ease,
-      box-shadow 0.15s ease;
+    padding: 7px 10px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .zr-field::placeholder {
-    color: var(--color-paper-mute);
+    color: var(--c-ink-300);
   }
   .zr-field:focus {
     outline: none;
-    border-color: var(--color-brass-600);
-    box-shadow: 0 0 0 3px rgba(245, 179, 66, 0.12);
+    border-color: var(--c-brand);
+    box-shadow: 0 0 0 3px rgba(245, 179, 66, 0.16);
   }
 
-  select.zr-field {
-    appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236c7482' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 0.55rem center;
-    padding-right: 1.6rem;
-  }
-
-  /* 进行中的斜纹流动 */
   .zr-sweep {
     background-image: repeating-linear-gradient(
       -45deg,
-      rgba(245, 179, 66, 0.32) 0 10px,
+      rgba(245, 179, 66, 0.34) 0 10px,
       rgba(245, 179, 66, 0.12) 10px 20px
     );
     background-size: 28px 28px;
@@ -299,18 +462,14 @@ body::after {
     animation: zr-pulse 1.6s ease-in-out infinite;
   }
 
-  /* 拖拽区：虚线刻痕 */
   .zr-drop {
-    border: 1px dashed var(--color-ink-500);
-    border-radius: 4px;
-    transition:
-      border-color 0.18s ease,
-      background-color 0.18s ease,
-      box-shadow 0.18s ease;
+    border: 1px dashed var(--c-border-strong);
+    border-radius: 12px;
+    transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
   }
-  .zr-drop[data-active="true"] {
-    border-color: var(--color-brass-500);
-    background: rgba(245, 179, 66, 0.06);
-    box-shadow: 0 0 0 3px rgba(245, 179, 66, 0.1) inset;
+  .zr-drop[data-active='true'] {
+    border-color: var(--c-brand);
+    background: var(--c-brand-50);
+    box-shadow: 0 0 0 3px rgba(245, 179, 66, 0.12) inset;
   }
 }

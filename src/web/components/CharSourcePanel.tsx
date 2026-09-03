@@ -26,42 +26,55 @@ export function CharSourcePanel({
   return (
     <Panel
       step="02"
-      title="字符集来源"
+      title="你的网站会出现哪些字"
       delay={60}
       hint={
-        <span className="zr-num">
-          去重 {stats.unique.toLocaleString()} 字 / 共 {stats.total.toLocaleString()} 次
-        </span>
+        stats.unique > 0 ? (
+          <span className="zr-num">识别到 {stats.unique.toLocaleString()} 个字</span>
+        ) : (
+          <span className="text-ink-300">尚未粘贴，将只用兜底字表</span>
+        )
       }
     >
-      <textarea
-        className="zr-field h-28 resize-y leading-relaxed"
-        value={text}
-        onChange={(e) => onTextChange(e.target.value)}
-        placeholder="粘贴站点正文、导航与标题文案……"
-      />
+      <div className="flex flex-col gap-2">
+        <p className="text-[11px] leading-relaxed text-ink-400">
+          把网站文案粘贴进来，工具就只切出这些字——不必为整本字典买单。
+          <br />
+          文案给得越全，切出来的字体越不容易缺字。
+        </p>
 
-      <button
-        type="button"
-        className="mt-2 text-[11px] text-paper-mute underline decoration-dotted underline-offset-4 hover:text-paper-dim"
-        onClick={() => setOpenSample((v) => !v)}
-      >
-        {openSample ? '收起' : '单独指定模拟加载用的样本文本'}
-      </button>
+        <textarea
+          className="zr-field h-28 resize-y leading-relaxed"
+          value={text}
+          onChange={(e) => onTextChange(e.target.value)}
+          placeholder={
+            '粘贴网站的正文、导航、标题、按钮文案……\n' +
+            '留空也可以，工具会退回到「兜底字表」来选字。'
+          }
+        />
 
-      {openSample && (
-        <div className="mt-2">
-          <textarea
-            className="zr-field h-20 resize-y leading-relaxed"
-            value={sampleText}
-            onChange={(e) => onSampleChange(e.target.value)}
-            placeholder="留空则使用上方文本。填入则用它模拟「某个页面会下载哪些片」。"
-          />
-          <div className="mt-1 text-[10px] leading-snug text-paper-mute">
-            模拟结果会告诉你：这个页面实际只会下载几片、多少 KB。
+        <button
+          type="button"
+          className="self-start text-[11px] text-ink-400 underline decoration-dotted underline-offset-4 hover:text-ink-700"
+          onClick={() => setOpenSample((v) => !v)}
+        >
+          {openSample ? '收起' : '我想预测单个页面的加载量'}
+        </button>
+
+        {openSample && (
+          <div className="flex flex-col gap-1">
+            <textarea
+              className="zr-field h-20 resize-y leading-relaxed"
+              value={sampleText}
+              onChange={(e) => onSampleChange(e.target.value)}
+              placeholder="粘贴某一个页面的文案，比如首页"
+            />
+            <span className="text-[10px] leading-snug text-ink-300">
+              上面那框决定「切哪些字」；这里只决定「预测哪个页面」，不会改变产物。
+            </span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </Panel>
   );
 }

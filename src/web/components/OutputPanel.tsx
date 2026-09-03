@@ -65,9 +65,9 @@ export function OutputPanel({
   const text = sampleText.trim() || DEFAULT_PREVIEW;
 
   return (
-    <div>
-      <div className="mb-3 flex items-center gap-3">
-        <div className="w-[190px]">
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <div className="w-[190px] shrink-0">
           <Segmented
             value={tab}
             onChange={setTab}
@@ -77,43 +77,50 @@ export function OutputPanel({
             ]}
           />
         </div>
+
         {tab === 'css' ? (
-          <button
-            type="button"
-            className="zr-btn zr-btn-ghost ml-auto px-3 py-1 text-[12px]"
-            onClick={copy}
-          >
-            {copied ? '已复制' : '复制'}
-          </button>
+          <>
+            <div className="flex-1" />
+            <button
+              type="button"
+              className="zr-btn zr-btn-ghost shrink-0 px-3 py-1 text-[12px]"
+              onClick={copy}
+            >
+              {copied ? '已复制' : '复制'}
+            </button>
+          </>
         ) : (
-          <label className="ml-auto flex items-center gap-2 text-[11px] text-paper-mute">
-            字号
-            <input
-              type="range"
-              min={16}
-              max={72}
-              value={size}
-              onChange={(e) => setSize(Number(e.target.value))}
-              className="w-28 accent-brass-500"
-            />
-            <span className="zr-num w-7 text-right">{size}</span>
-          </label>
+          <>
+            <div className="flex-1" />
+            <label className="flex shrink-0 items-center gap-2 text-[11px] text-ink-400">
+              字号
+              <input
+                type="range"
+                min={16}
+                max={72}
+                value={size}
+                onChange={(e) => setSize(Number(e.target.value))}
+                className="w-28 accent-brand"
+              />
+              <span className="zr-num w-7 text-right">{size}</span>
+            </label>
+          </>
         )}
       </div>
 
       {tab === 'css' ? (
-        <pre className="zr-num max-h-[320px] overflow-auto rounded-[3px] border border-line-soft bg-ink-950 p-3 text-[11px] leading-relaxed text-paper-dim">
+        <pre className="zr-num max-h-[320px] overflow-auto rounded-xl border border-line bg-surface-2 p-3 text-[11px] leading-relaxed text-ink-700">
           {css}
         </pre>
       ) : (
-        <div className="rounded-[3px] border border-line-soft bg-ink-950 p-4">
+        <div className="rounded-xl border border-line bg-surface-2 p-4">
           <div
-            className="break-words leading-relaxed text-paper"
+            className="break-words leading-relaxed text-ink-900"
             style={{ fontFamily: `"${fam}", sans-serif`, fontSize: `${size}px` }}
           >
             {text}
           </div>
-          <div className="mt-3 border-t border-line-soft pt-2 text-[10px] leading-snug text-paper-mute">
+          <div className="border-t border-line pt-2 text-[10px] leading-snug text-ink-400">
             用本次产出的 {chunks.length} 个分片（{format}）渲染。若某个字看起来与其他字字体不一致，
             说明它落在缺字回退上——去看上面的建议面板有没有缺字告警。
           </div>
