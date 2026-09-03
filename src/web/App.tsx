@@ -19,6 +19,7 @@ const DEFAULT_STRATEGY: PartitionStrategy = {
   growth: 1.35,
   maxSize: 800,
   fallback: 'common-3500',
+  useFontCmap: true,
   overrides: [],
 };
 
@@ -34,11 +35,12 @@ export default function App() {
   const [error, setError] = useState('');
 
   // 字符集规模估算：文本去重 + 兜底字表将追加的量。
+  // 全量模式直接取字体 cmap 码位数。
   // 只用于驱动前端实时校验，真实值以服务端返回的 charsetSize 为准。
-  const charCount = useMemo(
-    () => extractCharFreq(text).size + (FALLBACK_SIZES[strategy.fallback] ?? 0),
-    [text, strategy.fallback],
-  );
+  const charCount = useMemo(() => {
+    if (strategy.useFontCmap && font?.codepoints) return font.codepoints.length;
+    return extractCharFreq(text).size + (FALLBACK_SIZES[strategy.fallback] ?? 0);
+  }, [text, strategy.fallback, strategy.useFontCmap, font]);
 
   const totalOut = useMemo(() => {
     if (!result) return 0;
@@ -153,6 +155,9 @@ export default function App() {
               onTextChange={setText}
               sampleText={sampleText}
               onSampleChange={setSampleText}
+              useFontCmap={strategy.useFontCmap ?? false}
+              onUseFontCmapChange={(v) => setStrategy({ ...strategy, useFontCmap: v })}
+              fontCodepoints={font?.codepoints.length}
             />
             <StrategyPanel
               font={font}

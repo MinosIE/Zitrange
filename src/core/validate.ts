@@ -18,7 +18,7 @@ export function validate(input: ValidationInput): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const { charCount, strategy, format, font } = input;
 
-  if (charCount <= 0) {
+  if (charCount <= 0 && !strategy.useFontCmap) {
     issues.push({
       id: 'E_EMPTY',
       level: 'warn',
@@ -58,7 +58,7 @@ export function validate(input: ValidationInput): ValidationIssue[] {
     });
   }
 
-  if (strategy.mode === 'frequency' && strategy.fallback === 'none') {
+  if (strategy.mode === 'frequency' && strategy.fallback === 'none' && !strategy.useFontCmap) {
     issues.push({
       id: 'W_FREQ_NO_FB',
       level: 'warn',
@@ -74,7 +74,7 @@ export function validate(input: ValidationInput): ValidationIssue[] {
     });
   }
 
-  if (font && charCount > font.numGlyphs) {
+  if (font && charCount > font.numGlyphs && !strategy.useFontCmap) {
     issues.push({
       id: 'W_MISS',
       level: 'warn',

@@ -7,6 +7,8 @@ export interface RecommendInput {
   font: FontInfo;
   /** 字符集大小（去重码位数） */
   charCount: number;
+  /** 当前分片策略（用于判断全量模式等） */
+  strategy?: PartitionStrategy;
 }
 
 /** 用于估算首屏下载量的「典型页面」不同字符数 */
@@ -109,7 +111,7 @@ export function recommend(input: RecommendInput): Recommendation {
     evidence: '实测每字体积差异极大：简黑≈80B，书法体≈930B/字',
   });
 
-  if (charCount >= font.numGlyphs) {
+  if (charCount >= font.numGlyphs && !input.strategy?.useFontCmap) {
     reasons.push({
       id: 'R8',
       level: 'warn',

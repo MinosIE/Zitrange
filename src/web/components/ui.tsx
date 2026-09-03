@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { Theme } from '../useTheme';
 
 /* ------------------------------------------------------------------ */
@@ -116,12 +117,43 @@ export function Dropdown<T extends string>({
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  // 浮层用 portal 挂到 body，避免被面板的层叠上下文困住而画在后续面板之下
+  useEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return;
+    }
+    const place = () => {
+      const el = triggerRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setCoords({ top: r.bottom + 4, left: r.left, width: r.width });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(t) &&
+        popRef.current &&
+        !popRef.current.contains(t)
+      ) {
+        setOpen(false);
+      }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
@@ -137,8 +169,9 @@ export function Dropdown<T extends string>({
   const active = options.find((o) => o.value === value);
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       <button
+        ref={triggerRef}
         type="button"
         className={`zr-field flex items-center justify-between gap-2 text-left ${
           disabled ? 'cursor-not-allowed opacity-50' : ''
@@ -164,49 +197,54 @@ export function Dropdown<T extends string>({
         </svg>
       </button>
 
-      {open && (
-        <div
-          role="listbox"
-          className="zr-pop absolute left-0 top-[calc(100%+4px)] z-30 w-full overflow-hidden rounded-lg border border-line bg-surface py-1 shadow-lift"
-        >
-          {options.map((o) => {
-            const on = o.value === value;
-            return (
-              <button
-                key={o.value}
-                type="button"
-                role="option"
-                aria-selected={on}
-                className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[13px] transition-colors hover:bg-surface-2 ${
-                  on ? 'font-medium text-brand' : 'text-ink-700'
-                }`}
-                onClick={() => {
-                  onChange(o.value);
-                  setOpen(false);
-                }}
-              >
-                <span className="truncate">{o.label}</span>
-                {o.note && (
-                  <span className="ml-1 shrink-0 text-[10px] text-ink-300">{o.note}</span>
-                )}
-                {on && (
-                  <svg
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-3.5 w-3.5 shrink-0"
-                  >
-                    <path d="M3 8.5L6.5 12L13 4.5" />
-                  </svg>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {open &&
+        coords &&
+        createPortal(
+          <div
+            ref={popRef}
+            role="listbox"
+            style={{ position: 'fixed', top: coords.top, left: coords.left, width: coords.width, zIndex: 50 }}
+            className="zr-pop z-50 overflow-hidden rounded-lg border border-line bg-surface py-1 shadow-lift"
+          >
+            {options.map((o) => {
+              const on = o.value === value;
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="option"
+                  aria-selected={on}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-[13px] transition-colors bg-surface hover:bg-surface-2 focus:bg-surface-2 focus:outline-none ${
+                    on ? 'bg-surface-2 font-medium text-brand' : 'text-ink-700'
+                  }`}
+                  onClick={() => {
+                    onChange(o.value);
+                    setOpen(false);
+                  }}
+                >
+                  <span className="truncate">{o.label}</span>
+                  {o.note && (
+                    <span className="ml-1 shrink-0 text-[10px] text-ink-300">{o.note}</span>
+                  )}
+                  {on && (
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-3.5 w-3.5 shrink-0"
+                    >
+                      <path d="M3 8.5L6.5 12L13 4.5" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -241,6 +279,30 @@ export function Segmented<T extends string>({
         );
       })}
     </div>
+  );
+}
+
+/** 开关（纪律模式：自绘，禁用原生 checkbox） */
+export function Switch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={`zr-switch ${checked ? 'is-on' : ''}`}
+    >
+      <span className="zr-switch-thumb" />
+    </button>
   );
 }
 

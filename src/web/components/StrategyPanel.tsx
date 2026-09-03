@@ -122,16 +122,18 @@ export function StrategyPanel({
         <Field
           label="兜底字表"
           hint={
-            strategy.mode === 'site'
-              ? '站点模式只用你提供的字，不补兜底'
-              : '站点未覆盖的字，按通用字频补全'
+            strategy.useFontCmap
+              ? '全量模式已覆盖 cmap 全部字形，兜底字表不再生效'
+              : strategy.mode === 'site'
+                ? '站点模式只用你提供的字，不补兜底'
+                : '站点未覆盖的字，按通用字频补全'
           }
         >
           <Dropdown
             value={strategy.fallback}
             onChange={(fallback) => onStrategy({ ...strategy, fallback })}
             options={fallbackOptions}
-            disabled={strategy.mode === 'site'}
+            disabled={strategy.mode === 'site' || strategy.useFontCmap}
           />
         </Field>
 

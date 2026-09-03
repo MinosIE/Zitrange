@@ -87,9 +87,15 @@ export async function processFont(req: ProcessRequest): Promise<ProcessResult> {
   const fbSize = FALLBACK_SIZES[req.strategy.fallback] ?? 0;
   const freq: CharFreq = new Map(siteFreq);
 
-  // 站点模式：只用扫描到的字，不补兜底。
-  // 混合 / 字频模式：按所选档位用全局字频表补全生僻字。
-  if (mode !== 'site' && fbSize > 0) {
+  if (req.strategy.useFontCmap) {
+    // 全量模式：直接纳入字体 cmap 的全部码位，绕过兜底字表上限，
+    // 保证不漏任何字形（生僻字、扩展区、符号等一律切出）。
+    for (const cp of font.codepoints) {
+      if (!freq.has(cp)) freq.set(cp, 0);
+    }
+  } else if (mode !== 'site' && fbSize > 0) {
+    // 站点模式：只用扫描到的字，不补兜底。
+    // 混合 / 字频模式：按所选档位用全局字频表补全生僻字。
     applyFallback(freq, table, fbSize);
   }
   // ASCII 与常用标点保底：所有模式都纳入，确保产物含数字/字母/标点。
@@ -151,7 +157,7 @@ export async function processFont(req: ProcessRequest): Promise<ProcessResult> {
   const simulation = req.sampleText
     ? simulateLoad(chunks, req.sampleText, { chunkSizes: realSizes })
     : undefined;
-  const recommendation = recommend({ font, charCount: charsetSize });
+  const recommendation = recommend({ font, charCount: charsetSize, strategy: req.strategy });
   const issues = validate({ charCount: charsetSize, strategy: req.strategy, format: req.format, font });
 
   return { font, charsetSize, chunks: chunkResults, css, simulation, recommendation, issues };

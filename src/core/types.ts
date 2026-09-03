@@ -24,6 +24,8 @@ export interface PartitionStrategy {
   /** 递增上限，默认 800 */
   maxSize: number;
   fallback: FallbackCharset;
+  /** 拆分全量字体：用字体 cmap 的全部码位作为字符集，绕过兜底字表上限 */
+  useFontCmap?: boolean;
   /** 手动编辑，按顺序作用在自动分片结果之上 */
   overrides?: ManualOverride[];
 }
