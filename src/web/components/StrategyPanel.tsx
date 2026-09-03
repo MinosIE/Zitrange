@@ -10,39 +10,37 @@ import type {
 import { ChipGroup, Dropdown, Field, Note, NumberField, Panel, Segmented, Switch } from './ui';
 
 /**
- * 纯输入（未开全量拆分）且选了兜底字表时的分片模式。
- * 原「站点」与「混合」在「不兜底」时输出完全一致（都不补兜底、都按文本频次排序），
- * 故合并为「按文本频次」；「不兜底」时整个字段隐藏（见 showMode）。
+ * 纯输入（未开全量拆分）且选了兜底字表时的分片模式（「不兜底」时整个字段隐藏，见 showMode）。
+ * 提供三档：按文本频次（用你文本的频次）、按通用字频（用通用字频表）、按码位邻近（按码位聚类）。
  */
 const MODES: { value: StrategyMode; label: string }[] = [
   { value: 'hybrid', label: '按文本频次' },
   { value: 'frequency', label: '按通用字频' },
-  { value: 'codepoint', label: '按码位紧凑' },
+  { value: 'codepoint', label: '按码位邻近' },
 ];
 
 const MODE_HINT: Record<StrategyMode, string> = {
-  hybrid: '按你文本里的出现频次排序，最常用的字进最小首片。文案固定的页面首选。',
-  frequency: '按通用字频降序排序，而非你的文本频次。适合内容不可预知、样本不具代表性的场景。',
-  site: '已合并进「按文本频次」，界面不再单独提供。',
+  hybrid:
+    '按你文本里的出现频次排序，最常用的字进最小首片。文案固定的页面（官网 / 落地页 / 固定菜单）首选，首屏命中率最高。',
+  frequency:
+    '按通用中文字频降序排序，忽略你的文本频次。适合内容不可预知、样本不具代表性的场景（UGC / 搜索结果）。注意：每片是某一频段的字，码位分散，会展开成几十条~上百条 unicode-range；想要紧凑 range 选另两种模式。',
   codepoint:
-    '按码位升序聚类，unicode-range 折叠成少量区间（单行更短）。代价：高频字不再集中于小首屏片，首屏收益减弱。',
+    '按码位升序聚类，连续段折叠成单区间，每片通常仅 1 条 unicode-range（单行最短），首屏解析最快。代价：高频字不再集中到小首屏片，首屏局域性收益减弱。',
   block:
-    '把覆盖码位区间等分为 N 个连续码块，片数严格 = 目标片数，最可预测。仅全量模式提供。',
+    '把字体覆盖的码位区间等分为 N 个连续码块，片数严格 = 目标片数，最可预测；每块 1 条连续 unicode-range。适合需要稳定片数与紧凑 range 的全量拆分。',
+  // 'site' 已不再作为界面选项（并入「按文本频次」），保留仅为满足类型，不会被渲染。
+  site: '',
 };
 
 /**
- * 全量模式（拆分全量字体）下，字符集已含字体全部字形，且「你的网站会出现哪些字」面板里的
- * 文案输入框会被隐藏（不读取任何样本/站点文本）。模式只影响排序优先级，而缺少文本时
- * 唯一可行的排序就是按通用字频，故此处只保留一个选项。
+ * 全量模式（拆分全量字体）下，字符集已含字体全部字形，且样本 / 站点文本输入框被隐藏（不读取任何文本）。
+ * 提供三种排序：按通用字频、按码位邻近、按码块均分。
  */
 const MODES_FULL: { value: StrategyMode; label: string }[] = [
   { value: 'frequency', label: '按通用字频' },
   { value: 'codepoint', label: '按码位邻近' },
   { value: 'block', label: '按码块均分' },
 ];
-
-const MODE_HINT_FULL =
-  '全量模式已包含字体全部字形，且不读取任何样本/站点文本。两种排序：按通用字频（高频字在前，无论页面内容如何都稳定命中前面的片）或按码位邻近（每片聚集相邻字，unicode-range 折叠成少量区间，单行更短）。适合内容不可预知（博客 / UGC / CMS）。';
 
 /** 分片尺寸档位：与「单片字数 / 递增系数」互斥，二者不同时出现 */
 const SIZE_MODES: { value: 'base' | 'target'; label: string }[] = [
@@ -109,7 +107,7 @@ export function StrategyPanel({
     : fullMode
       ? 'frequency'
       : 'hybrid';
-  const modeHint = fullMode ? MODE_HINT_FULL : MODE_HINT[strategy.mode];
+  const modeHint = MODE_HINT[displayMode];
 
   // ASCII/标点保底（内容轴）：是否注入数字/字母/标点；全量模式下为无作用项
   const asciiGuardOn = strategy.includeAsciiPunct ?? true;

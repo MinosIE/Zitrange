@@ -140,6 +140,14 @@ describe('动态片数（targetSlices）', () => {
     expect(chunks[0].codepoints.length).toBe(1000);
   });
 
+  it('大字符集不被 maxSize 上限限死，仍按目标片数收敛', () => {
+    const cps = Array.from({ length: 30000 }, (_, i) => 0x4e00 + i);
+    // 默认 maxSize=1000：若派生值被 clamp，会变成 30 片而非目标的 20
+    const chunks = partition(cps, { ...hybrid, targetSlices: 20 }, { asciiFirst: false });
+    expect(chunks.length).toBe(20);
+    expect(chunks[0].codepoints.length).toBe(1500);
+  });
+
   it('targetSlices 为 0/未设时回退到 baseSize/growth 原行为', () => {
     const cps = Array.from({ length: 1000 }, (_, i) => 0x4e00 + i);
     const chunks = partition(cps, { ...hybrid }, { asciiFirst: false });

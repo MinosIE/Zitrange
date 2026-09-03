@@ -53,7 +53,9 @@ export function partition(
   const eff: PartitionStrategy = { ...strategy };
   if (strategy.targetSlices && strategy.targetSlices > 0) {
     const derived = Math.ceil(ordered.length / strategy.targetSlices);
-    eff.baseSize = Math.min(Math.max(derived, MIN_CHUNK), strategy.maxSize || 1000);
+    // 不加 maxSize 上限：目标片数本就要以更大的单片换取更少的片数，
+    // 否则大字符集会被 maxSize（默认 1000）限死，全量字体下片数远超目标（如 3 万字被切成 30 片）。
+    eff.baseSize = Math.max(derived, MIN_CHUNK);
     eff.growth = 1;
   }
 
