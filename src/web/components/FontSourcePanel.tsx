@@ -115,7 +115,7 @@ export function FontSourcePanel({
             {uploading ? (
               <div className="flex w-full flex-col gap-2 px-4">
                 <span className="text-[12px] text-brand">上传并检视中…</span>
-                <span className="zr-sweep h-1 w-full rounded-full" />
+                <span className="zr-sweep h-1.5 w-full rounded-full" />
               </div>
             ) : (
               <>

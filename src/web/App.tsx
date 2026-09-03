@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react';
 import { extractCharFreq, FALLBACK_SIZES } from '@core/charset';
-import type { ManualOverride, OutputFormat, PartitionStrategy } from '@core/types';
+import { recommend } from '@core/recommend';
+import type {
+  FallbackCharset,
+  ManualOverride,
+  OutputFormat,
+  PartitionStrategy,
+  Recommendation,
+  Suggestion,
+} from '@core/types';
 import { processFont, type ProcessResult } from './api';
 import { useTheme } from './useTheme';
 import { CharSourcePanel } from './components/CharSourcePanel';
@@ -12,6 +20,22 @@ import { ChunkTable } from './components/ChunkTable';
 import { FontPreview } from './components/FontPreview';
 import { OutputPanel } from './components/OutputPanel';
 import { Empty, Note, Panel, Stat, ThemeToggle } from './components/ui';
+
+/** 兜底字表档位的展示名，供建议文案使用 */
+const FALLBACK_LABEL: Record<FallbackCharset, string> = {
+  none: '不补兜底',
+  'common-3500': '常用字前 3500',
+  'common-7000': '常用字前 7000',
+  gb2312: 'GB2312',
+};
+
+/** 覆盖率不足时逐档升级的走向 */
+const FALLBACK_NEXT: Record<FallbackCharset, FallbackCharset> = {
+  none: 'common-3500',
+  'common-3500': 'common-7000',
+  'common-7000': 'gb2312',
+  gb2312: 'gb2312',
+};
 
 const DEFAULT_STRATEGY: PartitionStrategy = {
   mode: 'hybrid',
@@ -41,6 +65,35 @@ export default function App() {
     if (strategy.useFontCmap && font?.codepoints) return font.codepoints.length;
     return extractCharFreq(text).size + (FALLBACK_SIZES[strategy.fallback] ?? 0);
   }, [text, strategy.fallback, strategy.useFontCmap, font]);
+
+  // 智能建议：字体加载成功即基于「当前配置」实时估算，并给出可一键应用的调整。
+  // 随 strategy / format / charCount / font 变化而重算，数字与真正生成结果一致。
+  const recommendation = useMemo(
+    () => (font ? recommend({ font, charCount, strategy, format }) : null),
+    [font, charCount, strategy, format],
+  );
+
+  // 样本命中率建议（S5）：生成后可拿到真实覆盖率，若偏低则提示升级兜底/开全量。
+  // 用真实 simulate 结果算，准确且不重复造轮子；未生成或无样本时不出现。
+  const displayRec = useMemo<Recommendation | null>(() => {
+    if (!recommendation) return null;
+    const sim = result?.simulation;
+    if (!sim || sim.coverage >= 0.95) return recommendation;
+    const fb: FallbackCharset = strategy.fallback ?? 'none';
+    const nextFb = FALLBACK_NEXT[fb];
+    const canUpgrade = nextFb !== fb;
+    const covSugg: Suggestion = {
+      id: 'S5',
+      level: 'warn',
+      label: `样本覆盖率仅 ${(sim.coverage * 100).toFixed(1)}%`,
+      detail: canUpgrade
+        ? `样本中有较多字未被纳入，点此把兜底字表升到「${FALLBACK_LABEL[nextFb]}」`
+        : '样本中有较多字未被纳入，建议开启「拆分全量字体」以包含字体全部字形',
+      applied: false,
+      patch: canUpgrade ? { strategy: { fallback: nextFb } } : { strategy: { useFontCmap: true } },
+    };
+    return { ...recommendation, suggestions: [...recommendation.suggestions, covSugg] };
+  }, [recommendation, result, strategy.fallback, strategy.useFontCmap]);
 
   const totalOut = useMemo(() => {
     if (!result) return 0;
@@ -74,6 +127,20 @@ export default function App() {
 
   function doProcess() {
     runProcess(strategy);
+  }
+
+  // 一键应用某条智能建议：把声明式 patch 合并进当前策略/格式。改完后建议会重算，
+  // 已满足的项自动显示「已应用」。应用只改配置，需点「生成分片」才真正产出。
+  function applySuggestion(s: Suggestion) {
+    if (s.patch.strategy) {
+      setStrategy((prev) => ({ ...prev, ...s.patch.strategy }));
+    }
+    if (s.patch.addFormat) {
+      setFormat((prev) => Array.from(new Set([...prev, ...s.patch!.addFormat!])));
+    }
+    if (s.patch.removeFormat) {
+      setFormat((prev) => prev.filter((f) => !s.patch!.removeFormat!.includes(f)));
+    }
   }
 
   // 分片手动编辑（F2.11）：在自动分片结果之上追加一条 override，
@@ -176,7 +243,7 @@ export default function App() {
             >
               {busy ? (
                 <>
-                  <span className="zr-sweep h-1 w-24 rounded-full" />
+                  <span className="zr-spinner" aria-hidden />
                   处理中…
                 </>
               ) : (
@@ -189,6 +256,16 @@ export default function App() {
           {/* ---- 右：结果 ---- */}
           <div className="flex min-w-0 flex-col gap-4">
             {font && <FontPreview font={font} />}
+
+            {font && displayRec && (
+              <Panel
+                title="智能建议"
+                delay={60}
+                hint={<span className="text-ink-400">基于当前配置实时估算</span>}
+              >
+                <AdvicePanel rec={displayRec} onApply={applySuggestion} />
+              </Panel>
+            )}
 
             {!result ? (
               <Panel title="结果" delay={180}>
@@ -253,19 +330,18 @@ export default function App() {
                   </div>
                 </Panel>
 
-                <Panel title="智能建议" delay={60}>
-                  <div className="flex flex-col gap-3">
-                    <AdvicePanel rec={result.recommendation} />
-                    {result.issues.length > 0 && (
-                      <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-                        {result.issues.map((i) => (
-                          <Note key={i.id} level={i.level}>
-                            {i.text}
-                          </Note>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                <Panel title="校验提示" delay={60}>
+                  {result.issues.length > 0 ? (
+                    <div className="flex flex-col gap-1.5">
+                      {result.issues.map((i) => (
+                        <Note key={i.id} level={i.level}>
+                          {i.text}
+                        </Note>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-[12px] text-success">无配置风险，可直接生成。</span>
+                  )}
                 </Panel>
 
                 <Panel

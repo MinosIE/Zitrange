@@ -331,6 +331,12 @@ body::after {
   }
 }
 
+@keyframes zr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes zr-pop {
   from {
     transform: translateY(-4px);
@@ -480,11 +486,23 @@ body::after {
   .zr-sweep {
     background-image: repeating-linear-gradient(
       -45deg,
-      rgba(245, 179, 66, 0.34) 0 10px,
-      rgba(245, 179, 66, 0.12) 10px 20px
+      var(--c-brand) 0 10px,
+      rgba(245, 179, 66, 0.22) 10px 20px
     );
     background-size: 28px 28px;
     animation: zr-sweep 0.7s linear infinite;
+  }
+
+  /* 旋转圆环：用 currentColor 继承按钮文字色（主键为浅色、上传区为品牌色） */
+  .zr-spinner {
+    width: 15px;
+    height: 15px;
+    flex: none;
+    border-radius: 999px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    opacity: 0.85;
+    animation: zr-spin 0.65s linear infinite;
   }
 
   .zr-dot-live {

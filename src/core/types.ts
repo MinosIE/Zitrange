@@ -69,6 +69,8 @@ export interface Recommendation {
   strategy: PartitionStrategy;
   format: OutputFormat[];
   reasons: Reason[];
+  /** 可一键应用的具体调整（基于当前配置对比得出） */
+  suggestions: Suggestion[];
   estimate: {
     chunkCount: number;
     totalSize: number;
@@ -83,4 +85,21 @@ export interface Reason {
   text: string;
   /** 支撑该建议的实测数据 */
   evidence: string;
+}
+
+/** 一条可应用的智能建议。patch 为声明式增量，由前端合并进当前策略/格式 */
+export interface Suggestion {
+  id: string;
+  level: 'info' | 'warn' | 'success';
+  /** 按钮/标题文案 */
+  label: string;
+  /** 补充说明 */
+  detail: string;
+  /** 当前配置是否已满足（满足则前端显示「已应用」而非按钮） */
+  applied: boolean;
+  patch: {
+    strategy?: Partial<PartitionStrategy>;
+    addFormat?: OutputFormat[];
+    removeFormat?: OutputFormat[];
+  };
 }

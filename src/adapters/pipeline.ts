@@ -157,7 +157,7 @@ export async function processFont(req: ProcessRequest): Promise<ProcessResult> {
   const simulation = req.sampleText
     ? simulateLoad(chunks, req.sampleText, { chunkSizes: realSizes })
     : undefined;
-  const recommendation = recommend({ font, charCount: charsetSize, strategy: req.strategy });
+  const recommendation = recommend({ font, charCount: charsetSize, strategy: req.strategy, format: req.format });
   const issues = validate({ charCount: charsetSize, strategy: req.strategy, format: req.format, font });
 
   return { font, charsetSize, chunks: chunkResults, css, simulation, recommendation, issues };
