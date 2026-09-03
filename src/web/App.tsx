@@ -1,13 +1,9 @@
 import { useMemo, useState } from 'react';
 import { extractCharFreq, FALLBACK_SIZES } from '@core/charset';
-import { recommend } from '@core/recommend';
 import type {
-  FallbackCharset,
   ManualOverride,
   OutputFormat,
   PartitionStrategy,
-  Recommendation,
-  Suggestion,
 } from '@core/types';
 import { processFont, type ProcessResult } from './api';
 import { useTheme } from './useTheme';
@@ -15,27 +11,10 @@ import { CharSourcePanel } from './components/CharSourcePanel';
 import { FontSourcePanel, type LoadedFont } from './components/FontSourcePanel';
 import { StrategyPanel } from './components/StrategyPanel';
 import { SizeComparison } from './components/SizeComparison';
-import { AdvicePanel } from './components/AdvicePanel';
 import { ChunkTable } from './components/ChunkTable';
 import { FontPreview } from './components/FontPreview';
 import { OutputPanel } from './components/OutputPanel';
-import { Empty, Note, Panel, Stat, ThemeToggle } from './components/ui';
-
-/** 兜底字表档位的展示名，供建议文案使用 */
-const FALLBACK_LABEL: Record<FallbackCharset, string> = {
-  none: '不补兜底',
-  'common-3500': '常用字前 3500',
-  'common-7000': '常用字前 7000',
-  gb2312: 'GB2312',
-};
-
-/** 覆盖率不足时逐档升级的走向 */
-const FALLBACK_NEXT: Record<FallbackCharset, FallbackCharset> = {
-  none: 'common-3500',
-  'common-3500': 'common-7000',
-  'common-7000': 'gb2312',
-  gb2312: 'gb2312',
-};
+import { Empty, Panel, Stat, ThemeToggle, baseNameFromUrl } from './components/ui';
 
 const DEFAULT_STRATEGY: PartitionStrategy = {
   mode: 'hybrid',
@@ -65,35 +44,6 @@ export default function App() {
     if (strategy.useFontCmap && font?.codepoints) return font.codepoints.length;
     return extractCharFreq(text).size + (FALLBACK_SIZES[strategy.fallback] ?? 0);
   }, [text, strategy.fallback, strategy.useFontCmap, font]);
-
-  // 智能建议：字体加载成功即基于「当前配置」实时估算，并给出可一键应用的调整。
-  // 随 strategy / format / charCount / font 变化而重算，数字与真正生成结果一致。
-  const recommendation = useMemo(
-    () => (font ? recommend({ font, charCount, strategy, format }) : null),
-    [font, charCount, strategy, format],
-  );
-
-  // 样本命中率建议（S5）：生成后可拿到真实覆盖率，若偏低则提示升级兜底/开全量。
-  // 用真实 simulate 结果算，准确且不重复造轮子；未生成或无样本时不出现。
-  const displayRec = useMemo<Recommendation | null>(() => {
-    if (!recommendation) return null;
-    const sim = result?.simulation;
-    if (!sim || sim.coverage >= 0.95) return recommendation;
-    const fb: FallbackCharset = strategy.fallback ?? 'none';
-    const nextFb = FALLBACK_NEXT[fb];
-    const canUpgrade = nextFb !== fb;
-    const covSugg: Suggestion = {
-      id: 'S5',
-      level: 'warn',
-      label: `样本覆盖率仅 ${(sim.coverage * 100).toFixed(1)}%`,
-      detail: canUpgrade
-        ? `样本中有较多字未被纳入，点此把兜底字表升到「${FALLBACK_LABEL[nextFb]}」`
-        : '样本中有较多字未被纳入，建议开启「拆分全量字体」以包含字体全部字形',
-      applied: false,
-      patch: canUpgrade ? { strategy: { fallback: nextFb } } : { strategy: { useFontCmap: true } },
-    };
-    return { ...recommendation, suggestions: [...recommendation.suggestions, covSugg] };
-  }, [recommendation, result, strategy.fallback, strategy.useFontCmap]);
 
   const totalOut = useMemo(() => {
     if (!result) return 0;
@@ -129,32 +79,12 @@ export default function App() {
     runProcess(strategy);
   }
 
-  // 一键应用某条智能建议：把声明式 patch 合并进当前策略/格式。改完后建议会重算，
-  // 已满足的项自动显示「已应用」。应用只改配置，需点「生成分片」才真正产出。
-  function applySuggestion(s: Suggestion) {
-    if (s.patch.strategy) {
-      setStrategy((prev) => ({ ...prev, ...s.patch.strategy }));
-    }
-    if (s.patch.addFormat) {
-      setFormat((prev) => Array.from(new Set([...prev, ...s.patch!.addFormat!])));
-    }
-    if (s.patch.removeFormat) {
-      setFormat((prev) => prev.filter((f) => !s.patch!.removeFormat!.includes(f)));
-    }
-  }
-
   // 分片手动编辑（F2.11）：在自动分片结果之上追加一条 override，
   // 索引始终指向当前可见分片，因此叠加一致。见 PRD §6.3.1。
   function applyOverride(ov: ManualOverride) {
     const next = { ...strategy, overrides: [...(strategy.overrides ?? []), ov] };
     setStrategy(next);
     runProcess(next);
-  }
-  function mergeChunk(i: number) {
-    applyOverride({ kind: 'merge', chunks: [i, i + 1] });
-  }
-  function splitChunk(i: number) {
-    applyOverride({ kind: 'split', chunk: i, at: 'median' });
   }
   function pinChars(target: number, chars: string) {
     const list = Array.from(chars.trim());
@@ -175,6 +105,11 @@ export default function App() {
   function toggleFormat(f: OutputFormat) {
     setFormat((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f]));
   }
+
+  // 产物下载文件名基于首片 URL 反推基础名（如 FZJinHJW）
+  const baseName = baseNameFromUrl(
+    result?.chunks[0] ? Object.values(result.chunks[0].files)[0]?.url : undefined,
+  );
 
   return (
     <div className="flex justify-center px-6 py-7">
@@ -257,16 +192,6 @@ export default function App() {
           <div className="flex min-w-0 flex-col gap-4">
             {font && <FontPreview font={font} />}
 
-            {font && displayRec && (
-              <Panel
-                title="智能建议"
-                delay={60}
-                hint={<span className="text-ink-400">基于当前配置实时估算</span>}
-              >
-                <AdvicePanel rec={displayRec} onApply={applySuggestion} />
-              </Panel>
-            )}
-
             {!result ? (
               <Panel title="结果" delay={180}>
                 <Empty>
@@ -330,20 +255,6 @@ export default function App() {
                   </div>
                 </Panel>
 
-                <Panel title="校验提示" delay={60}>
-                  {result.issues.length > 0 ? (
-                    <div className="flex flex-col gap-1.5">
-                      {result.issues.map((i) => (
-                        <Note key={i.id} level={i.level}>
-                          {i.text}
-                        </Note>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-[12px] text-success">无配置风险，可直接生成。</span>
-                  )}
-                </Panel>
-
                 <Panel
                   title="分片清单"
                   delay={120}
@@ -354,8 +265,8 @@ export default function App() {
                     format={format[0]}
                     hitIndices={result.simulation?.hitIndices ?? []}
                     overrides={strategy.overrides}
-                    onMerge={mergeChunk}
-                    onSplit={splitChunk}
+                    css={result.css}
+                    baseName={baseName}
                     onPin={pinChars}
                     onExclude={excludeChars}
                     onReset={resetOverrides}
@@ -363,7 +274,7 @@ export default function App() {
                 </Panel>
 
                 <Panel title="产物预览" delay={180}>
-                  <OutputPanel css={result.css} />
+                  <OutputPanel css={result.css} baseName={baseName} />
                 </Panel>
               </>
             )}

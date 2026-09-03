@@ -5,8 +5,6 @@ import type {
   FontInfo,
   OutputFormat,
   PartitionStrategy,
-  ValidationIssue,
-  Recommendation,
 } from '../core/types';
 import {
   applyFallback,
@@ -20,8 +18,6 @@ import { charFreqCodepoints } from '../core/assets/charfreq-zh';
 import { partition } from '../core/partition';
 import { toUnicodeRange } from '../core/unicodeRange';
 import { estimateChunkSize, simulateLoad, type SimulateResult } from '../core/simulate';
-import { recommend } from '../core/recommend';
-import { validate } from '../core/validate';
 import { inspectFont, subsetChunks } from './fontEngine';
 
 /** 任何页面都会用到的 ASCII 与常用标点，保底纳入，确保产物含数字/字母 */
@@ -62,8 +58,6 @@ export interface ProcessResult {
   chunks: ChunkResult[];
   css: string;
   simulation?: SimulateResult;
-  recommendation: Recommendation;
-  issues: ValidationIssue[];
 }
 
 /** 完整处理管线：检视 → 取字 → 分片 → 生成 unicode-range → 子集化 → 组装 */
@@ -112,6 +106,13 @@ export async function processFont(req: ProcessRequest): Promise<ProcessResult> {
   // 3. 分片
   const chunks: Chunk[] = partition(ordered, req.strategy);
 
+  // 3.1 紧凑模式：计算可整块通配的 256 块（每个块仅归属唯一一片，避免片间 range 重叠）
+  const compact = req.strategy.compact;
+  let wildcardByChunk: Map<number, Set<number>> | null = null;
+  if (compact?.wildcard256) {
+    wildcardByChunk = computeWildcardBlocks(chunks, clamp01(compact.coverageThreshold ?? 0.9));
+  }
+
   // 4. 子集化（交给 Python engine）
   mkdirSync(req.outDir, { recursive: true });
   const subset = await subsetChunks({
@@ -144,7 +145,9 @@ export async function processFont(req: ProcessRequest): Promise<ProcessResult> {
     return {
       index: c.index,
       codepoints: c.codepoints,
-      unicodeRange: toUnicodeRange(c.codepoints),
+      unicodeRange: toUnicodeRange(c.codepoints, {
+        wildcardBlocks: wildcardByChunk?.get(c.index),
+      }),
       files,
     };
   });
@@ -157,10 +160,7 @@ export async function processFont(req: ProcessRequest): Promise<ProcessResult> {
   const simulation = req.sampleText
     ? simulateLoad(chunks, req.sampleText, { chunkSizes: realSizes })
     : undefined;
-  const recommendation = recommend({ font, charCount: charsetSize, strategy: req.strategy, format: req.format });
-  const issues = validate({ charCount: charsetSize, strategy: req.strategy, format: req.format, font });
-
-  return { font, charsetSize, chunks: chunkResults, css, simulation, recommendation, issues };
+  return { font, charsetSize, chunks: chunkResults, css, simulation };
 }
 
 function toCss(
@@ -181,4 +181,52 @@ function toCss(
       return `@font-face {\n  font-family: '${family}';\n  src: ${srcs};\n  font-display: swap;\n  unicode-range: ${c.unicodeRange};\n}`;
     })
     .join('\n\n');
+}
+
+/** 把 0–1 之外的阈值收敛到合法范围 */
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
+/**
+ * 基于全局分片结果，找出「可用 256 块通配符折叠」的块，且每个块只归属唯一一片。
+ * 规则：
+ *  1) 统计每个 256 块在全字符集中已含的字符数 presentCount；
+ *  2) 块内所有已含字符必须落在同一片（分片本身不重复字符，故天然满足，仍做防御性校验）；
+ *  3) 仅当 presentCount / 256 ≥ threshold 的块，才对其归属片标记为可通配。
+ * 返回 片 index -> 可通配块索引集合。
+ *
+ * 关键不变量：每个块最多出现在一个片的集合里，因此生成的整块区间不会与任何
+ * 其他片的 unicode-range 重叠——否则 CSS 中后声明的 @font-face 会抢走该块，
+ * 导致较早片的真实字形失效（静默缺字）。
+ */
+function computeWildcardBlocks(
+  chunks: Chunk[],
+  threshold: number,
+): Map<number, Set<number>> {
+  const presentCount = new Map<number, number>();
+  const owner = new Map<number, number>();
+  const conflict = new Set<number>(); // 被多片占用的块（理论上不会发生，防御性）
+
+  for (const c of chunks) {
+    for (const cp of c.codepoints) {
+      const b = Math.floor(cp / 256);
+      presentCount.set(b, (presentCount.get(b) ?? 0) + 1);
+      const prev = owner.get(b);
+      if (prev === undefined) owner.set(b, c.index);
+      else if (prev !== c.index) conflict.add(b);
+    }
+  }
+
+  const result = new Map<number, Set<number>>();
+  for (const [b, count] of presentCount) {
+    if (conflict.has(b)) continue;
+    if (count / 256 >= threshold) {
+      const idx = owner.get(b)!;
+      if (!result.has(idx)) result.set(idx, new Set());
+      result.get(idx)!.add(b);
+    }
+  }
+  return result;
 }

@@ -22,7 +22,6 @@ processFont({
     console.log('total out :', (total / 1024).toFixed(1) + 'KB woff2');
     console.log('chunk0    :', r.chunks[0].unicodeRange, '=>', r.chunks[0].files.woff2?.bytes, 'B');
     console.log('simulation:', JSON.stringify(r.simulation));
-    console.log('issues    :', r.issues.map((i) => i.id + ':' + i.level).join(', ') || '(none)');
     console.log('--- CSS (first 2 faces) ---');
     console.log(r.css.split('\n\n').slice(0, 2).join('\n\n'));
   })

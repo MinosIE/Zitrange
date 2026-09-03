@@ -1,7 +1,7 @@
 import type { ManualOverride, OutputFormat } from '@core/types';
 import { useState } from 'react';
 import type { ChunkResult } from '../api';
-import { Dropdown, fmtBytes } from './ui';
+import { Dropdown, fmtBytes, downloadText, downloadUrl } from './ui';
 
 // 取分片前若干字符作为样本，便于一眼看清这一片大致覆盖哪些字；
 // 完整编码范围仍由调用方以 title 形式保留。
@@ -16,8 +16,8 @@ export function ChunkTable({
   format,
   hitIndices,
   overrides,
-  onMerge,
-  onSplit,
+  css,
+  baseName,
   onPin,
   onExclude,
   onReset,
@@ -26,8 +26,8 @@ export function ChunkTable({
   format: OutputFormat;
   hitIndices: number[];
   overrides?: ManualOverride[];
-  onMerge: (i: number) => void;
-  onSplit: (i: number) => void;
+  css: string;
+  baseName: string;
   onPin: (targetIndex: number, chars: string) => void;
   onExclude: (chars: string) => void;
   onReset: () => void;
@@ -36,12 +36,21 @@ export function ChunkTable({
   const [charInput, setCharInput] = useState('');
   const [pinTarget, setPinTarget] = useState('0');
 
-  const lastIndex = chunks.length - 1;
   const pinOptions = chunks.map((c) => ({
     value: String(c.index),
     label: `#${c.index} · ${c.codepoints.length}字`,
   }));
   const overrideCount = overrides?.length ?? 0;
+
+  function downloadAll() {
+    for (const c of chunks) {
+      for (const fmt of Object.keys(c.files) as OutputFormat[]) {
+        const f = c.files[fmt];
+        if (f) downloadUrl(f.url, `${baseName}-${c.index}.${fmt === 'ttf' ? 'ttf' : fmt}`);
+      }
+    }
+    downloadText(css, `${baseName}.css`);
+  }
 
   return (
     <div className="flex flex-col gap-2.5">
@@ -53,14 +62,14 @@ export function ChunkTable({
               <th className="px-2 py-2 text-right font-medium">字数</th>
               <th className="px-2 py-2 text-left font-medium">字符</th>
               <th className="px-2.5 py-2 text-right font-medium">大小</th>
-              <th className="px-2 py-2 text-center font-medium">操作</th>
+              <th className="px-2 py-2 text-center font-medium">下载</th>
             </tr>
           </thead>
           <tbody>
             {chunks.map((c) => {
               const on = hit.has(c.index);
               const bytes = c.files[format]?.bytes ?? Object.values(c.files)[0]?.bytes ?? 0;
-              const isLast = c.index === lastIndex;
+              const formats = (Object.keys(c.files) as OutputFormat[]).filter((f) => c.files[f]);
               return (
                 <tr
                   key={c.index}
@@ -87,23 +96,26 @@ export function ChunkTable({
                   <td className="zr-num px-2.5 py-2 text-right text-ink-700">{fmtBytes(bytes)}</td>
                   <td className="px-2 py-2">
                     <div className="flex items-center justify-center gap-1">
-                      <button
-                        type="button"
-                        disabled={isLast}
-                        onClick={() => onMerge(c.index)}
-                        title="与下一片合并"
-                        className="zr-btn zr-btn-ghost px-1.5 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        合并↓
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onSplit(c.index)}
-                        title="从中间拆分为两片"
-                        className="zr-btn zr-btn-ghost px-1.5 py-0.5 text-[10px]"
-                      >
-                        拆分
-                      </button>
+                      {formats.length === 0 ? (
+                        <span className="text-[10px] text-ink-300">—</span>
+                      ) : (
+                        formats.map((fmt) => (
+                          <button
+                            key={fmt}
+                            type="button"
+                            onClick={() =>
+                              downloadUrl(
+                                c.files[fmt]!.url,
+                                `${baseName}-${c.index}.${fmt === 'ttf' ? 'ttf' : fmt}`,
+                              )
+                            }
+                            title={`下载 ${fmt.toUpperCase()}`}
+                            className="zr-btn zr-btn-ghost px-1.5 py-0.5 text-[10px]"
+                          >
+                            {fmt}
+                          </button>
+                        ))
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -147,14 +159,23 @@ export function ChunkTable({
           <span className="text-[10px] text-ink-300">
             手动编辑叠加在自动分片之上；改参数重新生成时保留
           </span>
-          <button
-            type="button"
-            onClick={onReset}
-            disabled={overrideCount === 0}
-            className="zr-btn zr-btn-ghost px-2 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            重置手动编辑{overrideCount > 0 ? ` (${overrideCount})` : ''}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={downloadAll}
+              className="zr-btn zr-btn-ghost px-2 py-0.5 text-[10px]"
+            >
+              下载全部
+            </button>
+            <button
+              type="button"
+              onClick={onReset}
+              disabled={overrideCount === 0}
+              className="zr-btn zr-btn-ghost px-2 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              重置手动编辑{overrideCount > 0 ? ` (${overrideCount})` : ''}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -44,13 +44,6 @@ export interface ProcessResult {
   chunks: ChunkResult[];
   css: string;
   simulation?: { hitIndices: number[]; totalBytes: number; hitRate: number; coverage: number };
-  recommendation: {
-    strategy: PartitionStrategy;
-    format: OutputFormat[];
-    reasons: { id: string; level: 'info' | 'warn'; text: string; evidence: string }[];
-    estimate: { chunkCount: number; totalSize: number; typicalPageLoad: number };
-  };
-  issues: { id: string; level: 'info' | 'warn'; text: string }[];
 }
 
 export function inspectFont(path: string, fontNumber = 0): Promise<InspectResult> {

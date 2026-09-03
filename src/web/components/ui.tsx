@@ -21,6 +21,35 @@ export function splitBytes(b: number): { value: string; unit: string } {
 }
 
 /* ------------------------------------------------------------------ */
+/* 下载                                                                */
+/* ------------------------------------------------------------------ */
+
+/** 通过临时 <a download> 触发浏览器下载；filename 为空时取 URL 末段 */
+export function downloadUrl(url: string, filename?: string): void {
+  const a = document.createElement('a');
+  a.href = url;
+  if (filename) a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/** 把一段文本作为文件下载（CSS 等） */
+export function downloadText(text: string, filename: string): void {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  downloadUrl(url, filename);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** 从产物 URL（如 /output/job/FZ-0.woff2）反推基础名（FZ），用于下载文件名 */
+export function baseNameFromUrl(url?: string): string {
+  if (!url) return 'zitrange';
+  const seg = url.split('/').pop() ?? '';
+  return seg.replace(/-\d+\.\w+$/, '') || 'zitrange';
+}
+
+/* ------------------------------------------------------------------ */
 /* 容器                                                                */
 /* ------------------------------------------------------------------ */
 

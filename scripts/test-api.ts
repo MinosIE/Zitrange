@@ -36,8 +36,6 @@ async function main() {
       procJ.chunks.length,
       '| css',
       procJ.css.length,
-      'chars | reasons',
-      procJ.recommendation.reasons.length,
     );
 
     const url = procJ.chunks[0].files.woff2.url;

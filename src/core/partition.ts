@@ -38,6 +38,10 @@ export function partition(
   strategy: PartitionStrategy,
   options: PartitionOptions = {},
 ): Chunk[] {
+  if (strategy.mode === 'codepoint') {
+    return partitionByCodepoint(ordered, strategy, options);
+  }
+
   const { asciiFirst = true } = options;
   const groups: Codepoint[][] = [];
 
@@ -71,6 +75,124 @@ export function partition(
     : groups;
 
   return applied.map((codepoints, index) => ({ index, codepoints }));
+}
+
+/** 码位聚类模式下的默认片数上限（见 PartitionStrategy.maxChunks） */
+const DEFAULT_MAX_CHUNKS = 512;
+
+/**
+ * 按码位邻近度聚类分片（mode='codepoint'）。
+ *
+ * 与混合/字频/站点模式相反：本模式忽略频率，仅按码位大小升序排序后，
+ * 把「极大连续段」按目标大小（baseSize / growth）装进定长片（bin-packing）。
+ * 连续段本身不被拆散，只有超过目标大小的超长段才切片成连续子段，
+ * 因此连续子集里每片仍是单区间（PRD §6.4），单行 `unicode-range` 显著变短；
+ * 同时片数由 baseSize 直接控制，与频率类模式一致，避免片数暴涨带来的加载开销。
+ *
+ * 适用场景：全量字体（cmap 多为 4E00–9FFF 等巨型连续块）分片时效果最佳，
+ * 一整个 CJK 区块可折叠成 `U+4E00-9FFF` 这样的单区间，且片数可控。
+ * 代价：放弃「高频字进小首屏片」的频率局域性，F4.3 首屏收益减弱（产品取向变更）。
+ *
+ * 退化情形：若字符集字字分散（几乎无连续段），则每片退化为若干孤立字，
+ * 单行 range 偏长（属可接受退化，因不声明不存在码位无法更短，见 §6.4）；
+ * 极端情况下仍用 `maxChunks` 兜底控制 @font-face 数量上限。
+ */
+export function partitionByCodepoint(
+  ordered: readonly Codepoint[],
+  strategy: PartitionStrategy,
+  options: PartitionOptions = {},
+): Chunk[] {
+  const { asciiFirst = true } = options;
+
+  let asciiChunk: Codepoint[] = [];
+  let body = ordered;
+  if (asciiFirst) {
+    asciiChunk = ordered.filter(isAsciiOrPunct);
+    body = ordered.filter((cp) => !isAsciiOrPunct(cp));
+  }
+
+  const sorted = [...new Set(body)].sort((a, b) => a - b);
+
+  // 1) 拆成极大连续段（步长 > 1 即断开）
+  const runs: Codepoint[][] = [];
+  let run: Codepoint[] = [];
+  for (const cp of sorted) {
+    if (run.length > 0 && cp !== run[run.length - 1] + 1) {
+      runs.push(run);
+      run = [];
+    }
+    run.push(cp);
+  }
+  if (run.length > 0) runs.push(run);
+
+  // 2) 把连续段按目标大小装进定长片（bin-packing）。
+  //    连续段本身不被拆散（仅超长段切片成连续子段），故连续子集里每片仍是单区间；
+  //    片数由 baseSize 直接控制，避免零散子集产生海量片。
+  const groups: Codepoint[][] = [];
+  let buf: Codepoint[] = [];
+  let bufSize = 0;
+  let k = 0;
+  for (const r of runs) {
+    const target = chunkSizeAt(strategy, k);
+    if (r.length > target) {
+      // 超长连续段：先 flush 当前 buf，再把它切成连续子段（每段仍是单区间）
+      if (bufSize > 0) {
+        groups.push(buf);
+        buf = [];
+        bufSize = 0;
+        k++;
+      }
+      for (let s = 0; s < r.length; s += target) {
+        groups.push(r.slice(s, s + target));
+        k++;
+      }
+      continue;
+    }
+    if (bufSize > 0 && bufSize + r.length > target) {
+      groups.push(buf);
+      buf = [];
+      bufSize = 0;
+      k++;
+    }
+    buf = buf.concat(r);
+    bufSize += r.length;
+  }
+  if (bufSize > 0) groups.push(buf);
+
+  // 3) 段数超过上限则顺序合并相邻段，控制 @font-face 数量
+  const maxChunks = strategy.maxChunks ?? DEFAULT_MAX_CHUNKS;
+  const capped = capToMaxChunks(groups, maxChunks);
+
+  const finalGroups = asciiChunk.length > 0 ? [asciiChunk, ...capped] : capped;
+
+  const applied = strategy.overrides?.length
+    ? applyOverrides(finalGroups, strategy.overrides)
+    : finalGroups;
+
+  return applied.map((codepoints, index) => ({ index, codepoints }));
+}
+
+/**
+ * 把相邻 group 合并，使最终数量不超过 maxChunks。
+ * 不变量：每步都满足 `out.length + 剩余未处理组数 ≤ maxChunks`，
+ * 因此一旦「剩下的组都能单独成片」就立即发出当前累积，合并尽量靠前、均匀分布。
+ */
+function capToMaxChunks(groups: Codepoint[][], maxChunks: number): Codepoint[][] {
+  if (groups.length <= maxChunks) return groups;
+
+  const out: Codepoint[][] = [];
+  let buf: Codepoint[] = [];
+  for (let i = 0; i < groups.length; i++) {
+    buf = buf.concat(groups[i]);
+    const remaining = groups.length - i; // 含当前组在内尚未处理的组数
+    if (out.length + remaining <= maxChunks) {
+      out.push(buf);
+      buf = [];
+    }
+    // 否则继续累积（不发出），直到满足上限约束再发出
+  }
+  if (buf.length > 0) out.push(buf);
+  return out;
 }
 
 /**
