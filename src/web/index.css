@@ -1,13 +1,316 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------
+   Zitrange Design Tokens
+   调性：「字坊 · 精密排印台」
+   深墨底 + 黄铜（活字/铅字）+ 冷青（数据）
+   中文衬线承载标题与关键数字，等宽体承载一切数据
+   --------------------------------------------------------------- */
+@theme {
+  /* 墨色：由深到浅 */
+  --color-ink-950: #07080a;
+  --color-ink-900: #0b0d11;
+  --color-ink-850: #101319;
+  --color-ink-800: #151920;
+  --color-ink-700: #1d222b;
+  --color-ink-600: #272d38;
+  --color-ink-500: #353d4a;
+
+  /* 黄铜：主强调色，取自铅活字与铜模 */
+  --color-brass-300: #ffd894;
+  --color-brass-400: #ffc76b;
+  --color-brass-500: #f5b342;
+  --color-brass-600: #db9526;
+  --color-brass-700: #a66c15;
+
+  /* 冷青：命中 / 数据 / 成功态 */
+  --color-jade-300: #8fe6d6;
+  --color-jade-400: #5fd3c0;
+  --color-jade-500: #35b7a3;
+
+  --color-danger-400: #ff8a7a;
+  --color-danger-500: #ff6f5e;
+
+  /* 暖白（宣纸）文本层级 */
+  --color-paper: #ede9e1;
+  --color-paper-dim: #a2a8b3;
+  --color-paper-mute: #6c7482;
+
+  /* 分隔线 */
+  --color-line: #232935;
+  --color-line-soft: #1a1f28;
+
+  --font-song: "Songti SC", "STSong", "Source Han Serif SC", "Noto Serif CJK SC", "SimSun", serif;
+  --font-hei: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Menlo", "Consolas", ui-monospace, monospace;
+}
+
 :root {
-  color-scheme: light;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  background: #f6f7f9;
-  color: #1f2328;
+  background-color: var(--color-ink-950);
+  color: var(--color-paper);
+  font-family: var(--font-hei);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 背景氛围：顶部暖光 + 坐标纸网格（伪元素，不拦截交互） */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    radial-gradient(1000px 460px at 10% -10%, rgba(245, 179, 66, 0.075), transparent 70%),
+    radial-gradient(760px 380px at 96% 4%, rgba(95, 211, 192, 0.045), transparent 72%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size:
+    auto,
+    auto,
+    32px 32px,
+    32px 32px;
+}
+
+/* 噪点：压住纯色渐变的塑料感 */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.4'/%3E%3C/svg%3E");
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+/* 滚动条：细窄、低对比，不抢内容 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #262d38;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3a4453;
+  background-clip: content-box;
+}
+
+/* ---------------------------------------------------------------
+   动画
+   --------------------------------------------------------------- */
+@keyframes zr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes zr-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes zr-sweep {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 28px 0;
+  }
+}
+
+@keyframes zr-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@layer components {
+  /* 面板：细边框 + 极浅内高光，像一块金属托板 */
+  .zr-panel {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.022), rgba(255, 255, 255, 0)) var(--color-ink-850);
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    box-shadow:
+      0 1px 0 0 rgba(255, 255, 255, 0.03) inset,
+      0 8px 24px -16px rgba(0, 0, 0, 0.9);
+  }
+
+  /* 面板序号标签：左上角的细刻字 */
+  .zr-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-paper-mute);
+  }
+
+  .zr-rise {
+    animation: zr-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .zr-grow {
+    transform-origin: left center;
+    animation: zr-grow 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* 表格化数字：等宽 + 制表对齐 */
+  .zr-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 巨号数字：宋体，中文排印的重量感 */
+  .zr-figure {
+    font-family: var(--font-song);
+    font-weight: 700;
+    line-height: 0.92;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .zr-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: 3px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    transition:
+      background-color 0.16s ease,
+      border-color 0.16s ease,
+      color 0.16s ease,
+      transform 0.16s ease,
+      box-shadow 0.16s ease;
+    cursor: pointer;
+    user-select: none;
+  }
+  .zr-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .zr-btn:not(:disabled):active {
+    transform: translateY(1px);
+  }
+
+  .zr-btn-primary {
+    background: linear-gradient(180deg, var(--color-brass-400), var(--color-brass-600));
+    color: #2a1c04;
+    font-weight: 700;
+    box-shadow: 0 6px 18px -10px rgba(245, 179, 66, 0.75);
+  }
+  .zr-btn-primary:not(:disabled):hover {
+    background: linear-gradient(180deg, var(--color-brass-300), var(--color-brass-500));
+  }
+
+  .zr-btn-ghost {
+    background: var(--color-ink-800);
+    border: 1px solid var(--color-line);
+    color: var(--color-paper-dim);
+  }
+  .zr-btn-ghost:not(:disabled):hover {
+    border-color: var(--color-ink-500);
+    color: var(--color-paper);
+    background: var(--color-ink-700);
+  }
+
+  .zr-field {
+    width: 100%;
+    background: var(--color-ink-900);
+    border: 1px solid var(--color-line);
+    border-radius: 3px;
+    color: var(--color-paper);
+    font-size: 13px;
+    padding: 0.4rem 0.55rem;
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .zr-field::placeholder {
+    color: var(--color-paper-mute);
+  }
+  .zr-field:focus {
+    outline: none;
+    border-color: var(--color-brass-600);
+    box-shadow: 0 0 0 3px rgba(245, 179, 66, 0.12);
+  }
+
+  select.zr-field {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236c7482' stroke-width='1.4' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.55rem center;
+    padding-right: 1.6rem;
+  }
+
+  /* 进行中的斜纹流动 */
+  .zr-sweep {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      rgba(245, 179, 66, 0.32) 0 10px,
+      rgba(245, 179, 66, 0.12) 10px 20px
+    );
+    background-size: 28px 28px;
+    animation: zr-sweep 0.7s linear infinite;
+  }
+
+  .zr-dot-live {
+    animation: zr-pulse 1.6s ease-in-out infinite;
+  }
+
+  /* 拖拽区：虚线刻痕 */
+  .zr-drop {
+    border: 1px dashed var(--color-ink-500);
+    border-radius: 4px;
+    transition:
+      border-color 0.18s ease,
+      background-color 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+  .zr-drop[data-active="true"] {
+    border-color: var(--color-brass-500);
+    background: rgba(245, 179, 66, 0.06);
+    box-shadow: 0 0 0 3px rgba(245, 179, 66, 0.1) inset;
+  }
 }

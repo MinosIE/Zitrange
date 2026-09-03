@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
+import { extractCharFreq, FALLBACK_SIZES } from '@core/charset';
 import type { OutputFormat, PartitionStrategy } from '@core/types';
-import {
-  inspectFont,
-  processFont,
-  type ChunkResult,
-  type InspectResult,
-  type ProcessResult,
-} from './api';
+import { processFont, type ProcessResult } from './api';
+import { CharSourcePanel } from './components/CharSourcePanel';
+import { FontSourcePanel, type LoadedFont } from './components/FontSourcePanel';
+import { StrategyPanel } from './components/StrategyPanel';
+import { SizeComparison } from './components/SizeComparison';
+import { AdvicePanel } from './components/AdvicePanel';
+import { ChunkTable } from './components/ChunkTable';
+import { OutputPanel } from './components/OutputPanel';
+import { Empty, Note, Panel, Stat } from './components/ui';
 
 const DEFAULT_STRATEGY: PartitionStrategy = {
   mode: 'hybrid',
@@ -21,15 +24,8 @@ const SAMPLE_TEXT =
   '通过按使用频率拆分并配合 unicode-range，浏览器只会下载当前页面真正需要的字形，' +
   '首屏不再被迫加载数 MB 的完整字体。';
 
-function fmtKB(b: number): string {
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
-  return `${(b / 1048576).toFixed(2)} MB`;
-}
-
 export default function App() {
-  const [fontPath, setFontPath] = useState('demo/FZJinHJW.TTF');
-  const [info, setInfo] = useState<InspectResult | null>(null);
+  const [font, setFont] = useState<LoadedFont | null>(null);
   const [text, setText] = useState(SAMPLE_TEXT);
   const [sampleText, setSampleText] = useState('');
   const [format, setFormat] = useState<OutputFormat[]>(['woff2']);
@@ -38,43 +34,38 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const totalOut = useMemo(
-    () =>
-      result
-        ? result.chunks.reduce(
-            (s, c) => s + (c.files[format[0]]?.bytes ?? Object.values(c.files)[0]?.bytes ?? 0),
-            0,
-          )
-        : 0,
-    [result, format],
+  // 字符集规模估算：文本去重 + 兜底字表将追加的量。
+  // 只用于驱动前端实时校验，真实值以服务端返回的 charsetSize 为准。
+  const charCount = useMemo(
+    () => extractCharFreq(text).size + (FALLBACK_SIZES[strategy.fallback] ?? 0),
+    [text, strategy.fallback],
   );
 
-  async function doInspect() {
-    setError('');
-    setBusy(true);
-    try {
-      setInfo(await inspectFont(fontPath));
-    } catch (e: any) {
-      setError(String(e.message ?? e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  const totalOut = useMemo(() => {
+    if (!result) return 0;
+    const f = format[0];
+    return result.chunks.reduce(
+      (s, c) => s + (c.files[f]?.bytes ?? Object.values(c.files)[0]?.bytes ?? 0),
+      0,
+    );
+  }, [result, format]);
 
   async function doProcess() {
+    if (!font) return;
     setError('');
     setBusy(true);
     try {
-      const r = await processFont({
-        path: fontPath,
-        text,
-        format,
-        strategy,
-        sampleText: sampleText || text,
-      });
-      setResult(r);
+      setResult(
+        await processFont({
+          path: font.path,
+          text,
+          format,
+          strategy,
+          sampleText: sampleText || text,
+        }),
+      );
     } catch (e: any) {
-      setError(String(e.message ?? e));
+      setError(String(e?.message ?? e));
     } finally {
       setBusy(false);
     }
@@ -85,267 +76,168 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold">中文字体子集化工具</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          按使用频率拆分 + unicode-range 按需加载 + woff2 压缩。源字体越完整，节省越可观。
-        </p>
+    <div className="mx-auto max-w-[1400px] px-6 py-7">
+      <header className="mb-5 flex items-end justify-between border-b border-line pb-4">
+        <div>
+          <div className="font-song text-[26px] font-bold leading-none tracking-wide text-paper">
+            Zitrange
+          </div>
+          <div className="mt-2 text-[11px] text-paper-mute">
+            中文字体分包与优化 · 本地运行，字体文件全程不出本机
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="zr-eyebrow">ENGINE</div>
+          <div className="mt-1.5 flex items-center justify-end gap-1.5 text-[11px]">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                busy ? 'zr-dot-live bg-brass-400' : 'bg-jade-400'
+              }`}
+            />
+            <span className="text-paper-dim">{busy ? '处理中' : '就绪'}</span>
+          </div>
+        </div>
       </header>
 
       {error && (
-        <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="mb-4 rounded-[3px] border-l-2 border-danger-500 bg-danger-500/[0.08] px-3 py-2 text-[12px] text-danger-400">
           {error}
         </div>
       )}
 
-      {/* 字体 */}
-      <Section title="1 · 字体">
-        <div className="flex gap-2">
-          <input
-            className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
-            value={fontPath}
-            onChange={(e) => setFontPath(e.target.value)}
-            placeholder="字体文件路径，如 demo/FZJinHJW.TTF"
+      <div className="grid items-start gap-4 lg:grid-cols-[360px_1fr]">
+        {/* ---- 左：配置 ---- */}
+        <div className="space-y-4">
+          <FontSourcePanel
+            font={font}
+            onLoaded={setFont}
+            onError={setError}
+            busy={busy}
           />
+          <CharSourcePanel
+            text={text}
+            onTextChange={setText}
+            sampleText={sampleText}
+            onSampleChange={setSampleText}
+          />
+          <StrategyPanel
+            font={font}
+            charCount={charCount}
+            strategy={strategy}
+            onStrategy={setStrategy}
+            format={format}
+            onToggleFormat={toggleFormat}
+          />
+
           <button
-            className="rounded-md bg-gray-800 px-4 py-2 text-sm text-white disabled:opacity-50"
-            onClick={doInspect}
-            disabled={busy}
+            type="button"
+            className="zr-btn zr-btn-primary w-full py-2.5 text-[13px]"
+            onClick={doProcess}
+            disabled={busy || !font}
           >
-            检视
+            {busy ? (
+              <>
+                <span className="zr-sweep h-1 w-24 rounded-full" />
+                处理中…
+              </>
+            ) : (
+              '生成分片'
+            )}
           </button>
+          {!font && (
+            <div className="text-center text-[10px] text-paper-mute">先加载一个字体文件</div>
+          )}
         </div>
-        {info && (
-          <div className="mt-3 flex flex-wrap gap-2 text-xs">
-            <Badge>字体：{info.family}</Badge>
-            <Badge>字形：{info.numGlyphs.toLocaleString()}</Badge>
-            <Badge>大小：{fmtKB(info.bytes)}</Badge>
-            <Badge>轮廓：{info.outline}</Badge>
-            {info.isVariable && <Badge>可变字体</Badge>}
-          </div>
-        )}
-      </Section>
 
-      {/* 字符集来源 */}
-      <Section title="2 · 字符集来源（站点文本）">
-        <textarea
-          className="h-28 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="粘贴站点正文 / 导航 / 标题文本……"
-        />
-        <details className="mt-2">
-          <summary className="cursor-pointer text-xs text-gray-500">模拟加载用的样本文本（默认同上方）</summary>
-          <textarea
-            className="mt-2 h-20 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            value={sampleText}
-            onChange={(e) => setSampleText(e.target.value)}
-            placeholder="留空则使用上方文本"
-          />
-        </details>
-      </Section>
+        {/* ---- 右：结果 ---- */}
+        <div className="space-y-4">
+          {!result ? (
+            <Panel title="结果" delay={180}>
+              <Empty>
+                加载字体并生成分片后，这里会给出体积对比、分片清单，
+                <br />
+                以及可以直接复制的 @font-face CSS。
+              </Empty>
+            </Panel>
+          ) : (
+            <>
+              <Panel
+                title="体积对比"
+                delay={0}
+                hint={<span className="zr-num">字符集 {result.charsetSize.toLocaleString()} 字</span>}
+              >
+                <SizeComparison
+                  original={font?.bytes ?? result.font.bytes}
+                  total={totalOut}
+                  actual={result.simulation ? result.simulation.totalBytes : null}
+                  hitIndices={result.simulation?.hitIndices ?? []}
+                  chunkCount={result.chunks.length}
+                />
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <Stat label="分片数" value={String(result.chunks.length)} />
+                  <Stat
+                    label="模拟命中"
+                    value={
+                      result.simulation
+                        ? `${result.simulation.hitIndices.length}/${result.chunks.length}`
+                        : '—'
+                    }
+                  />
+                  <Stat
+                    label="字符覆盖率"
+                    value={
+                      result.simulation
+                        ? `${(result.simulation.coverage * 100).toFixed(1)}%`
+                        : '—'
+                    }
+                    tone="jade"
+                  />
+                  <Stat
+                    label="分片合计"
+                    value={`${(totalOut / 1024).toFixed(0)} KB`}
+                    tone="brass"
+                  />
+                </div>
+              </Panel>
 
-      {/* 策略 */}
-      <Section title="3 · 输出格式与分片策略">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="输出格式">
-            <div className="flex gap-3">
-              {(['woff2', 'woff', 'ttf'] as OutputFormat[]).map((f) => (
-                <label key={f} className="flex items-center gap-1 text-sm">
-                  <input type="checkbox" checked={format.includes(f)} onChange={() => toggleFormat(f)} />
-                  {f}
-                </label>
-              ))}
-            </div>
-          </Field>
-          <Field label="分片模式">
-            <select
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-              value={strategy.mode}
-              onChange={(e) => setStrategy({ ...strategy, mode: e.target.value as any })}
-            >
-              <option value="hybrid">频次递增（推荐）</option>
-              <option value="frequency">固定频次</option>
-              <option value="site">整站一锅</option>
-            </select>
-          </Field>
-          <Field label="单片字数 baseSize">
-            <NumberInput value={strategy.baseSize} onChange={(v) => setStrategy({ ...strategy, baseSize: v })} />
-          </Field>
-          <Field label="递增系数 growth">
-            <NumberInput
-              value={strategy.growth}
-              step={0.05}
-              onChange={(v) => setStrategy({ ...strategy, growth: v })}
-            />
-          </Field>
-          <Field label="单片上限 maxSize">
-            <NumberInput value={strategy.maxSize} onChange={(v) => setStrategy({ ...strategy, maxSize: v })} />
-          </Field>
-          <Field label="兜底字表">
-            <select
-              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-              value={strategy.fallback}
-              onChange={(e) => setStrategy({ ...strategy, fallback: e.target.value as any })}
-            >
-              <option value="none">不兜底</option>
-              <option value="common-3500">常用字前 3500</option>
-              <option value="common-7000">常用字前 7000</option>
-              <option value="gb2312">GB2312 全集</option>
-            </select>
-          </Field>
+              <Panel title="智能建议" delay={60}>
+                <AdvicePanel rec={result.recommendation} />
+                {result.issues.length > 0 && (
+                  <div className="mt-3 space-y-1.5 border-t border-line-soft pt-3">
+                    {result.issues.map((i) => (
+                      <Note key={i.id} level={i.level}>
+                        {i.text}
+                      </Note>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+
+              <Panel
+                title="分片清单"
+                delay={120}
+                hint={<span className="text-paper-mute">高亮行 = 样本文本会命中的片</span>}
+              >
+                <ChunkTable
+                  chunks={result.chunks}
+                  format={format[0]}
+                  hitIndices={result.simulation?.hitIndices ?? []}
+                />
+              </Panel>
+
+              <Panel title="产物预览" delay={180}>
+                <OutputPanel
+                  jobId={result.jobId}
+                  css={result.css}
+                  chunks={result.chunks}
+                  format={format[0]}
+                  sampleText={sampleText || text}
+                />
+              </Panel>
+            </>
+          )}
         </div>
-        <button
-          className="mt-4 w-full rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-          onClick={doProcess}
-          disabled={busy || !info}
-        >
-          {busy ? '处理中…' : '生成分片'}
-        </button>
-      </Section>
-
-      {/* 结果 */}
-      {result && (
-        <Section title="4 · 结果与建议">
-          {result.recommendation.reasons.length > 0 && (
-            <div className="mb-4 space-y-2">
-              {result.recommendation.reasons.map((r) => (
-                <div
-                  key={r.id}
-                  className={`rounded-md border px-3 py-2 text-sm ${
-                    r.level === 'warn'
-                      ? 'border-amber-300 bg-amber-50'
-                      : 'border-gray-200 bg-gray-50'
-                  }`}
-                >
-                  <span className="font-mono text-xs font-bold text-gray-500">{r.id}</span>{' '}
-                  {r.text}
-                  <span className="ml-1 text-xs text-gray-400">（{r.evidence}）</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {result.issues.length > 0 && (
-            <div className="mb-4 space-y-1">
-              {result.issues.map((i) => (
-                <div key={i.id} className="text-sm text-amber-700">
-                  ⚠ {i.text}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="字符集" value={result.charsetSize.toLocaleString() + ' 字'} />
-            <Stat label="分片数" value={String(result.chunks.length)} />
-            <Stat label="输出合计" value={fmtKB(totalOut)} />
-            <Stat
-              label="源字体"
-              value={info ? fmtKB(info.bytes) : '—'}
-              sub={info ? `压缩 ${(info.bytes / Math.max(totalOut, 1)).toFixed(1)}×` : ''}
-            />
-          </div>
-
-          {result.simulation && (
-            <div className="mb-4 grid grid-cols-3 gap-3">
-              <Stat label="模拟命中片" value={`${result.simulation.hitIndices.length}/${result.chunks.length}`} />
-              <Stat label="模拟传输量" value={fmtKB(result.simulation.totalBytes)} />
-              <Stat label="字符覆盖率" value={`${(result.simulation.coverage * 100).toFixed(1)}%`} />
-            </div>
-          )}
-
-          <h3 className="mb-1 text-sm font-semibold">分片清单</h3>
-          <div className="max-h-64 overflow-auto rounded-md border border-gray-200">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50 text-left">
-                <tr>
-                  <th className="px-2 py-1.5">#</th>
-                  <th className="px-2 py-1.5">unicode-range</th>
-                  <th className="px-2 py-1.5 text-right">大小</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.chunks.map((c) => (
-                  <ChunkRow key={c.index} chunk={c} format={format[0]} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <h3 className="mb-1 mt-4 text-sm font-semibold">@font-face CSS（可直接复制）</h3>
-          <pre className="max-h-72 overflow-auto rounded-md bg-gray-900 p-3 text-xs leading-relaxed text-gray-100">
-            {result.css}
-          </pre>
-        </Section>
-      )}
+      </div>
     </div>
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="mb-5 rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-base font-semibold">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs text-gray-500">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function NumberInput({
-  value,
-  step = 1,
-  onChange,
-}: {
-  value: number;
-  step?: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <input
-      type="number"
-      step={step}
-      min={1}
-      className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-      value={value}
-      onChange={(e) => onChange(Number(e.target.value) || 0)}
-    />
-  );
-}
-
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-full bg-gray-100 px-2.5 py-1 text-gray-600">{children}</span>
-  );
-}
-
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="mt-0.5 text-lg font-semibold">{value}</div>
-      {sub && <div className="text-xs text-gray-400">{sub}</div>}
-    </div>
-  );
-}
-
-function ChunkRow({ chunk, format }: { chunk: ChunkResult; format: OutputFormat }) {
-  const bytes = chunk.files[format]?.bytes ?? Object.values(chunk.files)[0]?.bytes ?? 0;
-  return (
-    <tr className="border-t border-gray-100">
-      <td className="px-2 py-1.5">{chunk.index}</td>
-      <td className="px-2 py-1.5 font-mono text-gray-600">{chunk.unicodeRange}</td>
-      <td className="px-2 py-1.5 text-right">{fmtKB(bytes)}</td>
-    </tr>
   );
 }

@@ -1,8 +1,9 @@
 import { createServer } from 'node:http';
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { mkdir, stat } from 'node:fs/promises';
+import { basename, extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { pipeline } from 'node:stream/promises';
 import { inspectFont } from '../adapters/fontEngine';
 import { processFont } from '../adapters/pipeline';
 import type { OutputFormat, PartitionStrategy } from '../core/types';
@@ -15,8 +16,14 @@ const MIME: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.woff': 'font/woff',
   '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.ttc': 'font/collection',
+  '.otc': 'font/collection',
   '.json': 'application/json',
 };
+
+/** 允许通过 /api/raw 读取的字体扩展名白名单 */
+const FONT_EXT = new Set(['.woff2', '.woff', '.ttf', '.otf', '.ttc', '.otc']);
 
 function sendJson(res: any, status: number, data: unknown) {
   const body = JSON.stringify(data);
@@ -53,6 +60,21 @@ export const handler = async (req: any, res: any) => {
   const { pathname } = url;
 
   try {
+    // 上传：请求体为原始二进制（前端直接传 File），流式落盘，避免 multipart 解析与内存膨胀
+    if (req.method === 'POST' && pathname === '/api/upload') {
+      const rawName = url.searchParams.get('name') ?? 'font.ttf';
+      const safe = basename(rawName).replace(/[^\w.\-一-龥]/g, '_');
+      const dir = join(ROOT, '.tmp', 'uploads');
+      await mkdir(dir, { recursive: true });
+      const filePath = join(dir, `${randomUUID().slice(0, 8)}-${safe}`);
+      await pipeline(req, createWriteStream(filePath));
+      return sendJson(res, 200, {
+        path: relative(ROOT, filePath),
+        fileName: safe,
+        bytes: (await stat(filePath)).size,
+      });
+    }
+
     if (req.method === 'POST' && pathname === '/api/inspect') {
       const body = await readBody(req);
       if (!body.path) return sendJson(res, 400, { error: '缺少 path' });
@@ -77,6 +99,29 @@ export const handler = async (req: any, res: any) => {
         publicBase: `/output/${jobId}`,
       });
       return sendJson(res, 200, { jobId, ...result });
+    }
+
+    // 源字体读取（字形预览用）：仅限工作区内、扩展名在白名单内的文件，防路径穿越
+    if (req.method === 'GET' && pathname === '/api/raw') {
+      const p = url.searchParams.get('path');
+      if (!p) return sendJson(res, 400, { error: '缺少 path' });
+      const abs = resolve(ROOT, p);
+      const ext = extname(abs).toLowerCase();
+      if (abs !== ROOT && !abs.startsWith(ROOT + sep)) {
+        return sendJson(res, 403, { error: '越权路径' });
+      }
+      if (!FONT_EXT.has(ext)) return sendJson(res, 403, { error: '仅允许读取字体文件' });
+      try {
+        const s = await stat(abs);
+        if (!s.isFile()) return sendJson(res, 404, { error: '文件不存在' });
+        res.writeHead(200, {
+          'Content-Type': MIME[ext] ?? 'application/octet-stream',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        });
+        return createReadStream(abs).pipe(res);
+      } catch {
+        return sendJson(res, 404, { error: '文件不存在' });
+      }
     }
 
     if (req.method === 'GET' && pathname.startsWith('/output/')) {

@@ -68,3 +68,28 @@ export function processFont(payload: {
 }): Promise<ProcessResult> {
   return post<ProcessResult>('/process', payload);
 }
+
+export interface UploadResult {
+  path: string;
+  fileName: string;
+  bytes: number;
+}
+
+/** 上传字体文件：请求体直接是 File 二进制，服务端流式落盘，不占前端内存 */
+export async function uploadFont(file: File): Promise<UploadResult> {
+  const r = await fetch(`${BASE}/upload?name=${encodeURIComponent(file.name)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/octet-stream' },
+    body: file,
+  });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `上传失败 (${r.status})`);
+  }
+  return r.json() as Promise<UploadResult>;
+}
+
+/** 源字体的可读 URL（字形预览用），path 为工作区相对路径 */
+export function rawFontUrl(path: string): string {
+  return `${BASE}/raw?path=${encodeURIComponent(path)}`;
+}
