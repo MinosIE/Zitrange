@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { extractCharFreq, FALLBACK_SIZES } from '@core/charset';
-import type { OutputFormat, PartitionStrategy } from '@core/types';
+import type { ManualOverride, OutputFormat, PartitionStrategy } from '@core/types';
 import { processFont, type ProcessResult } from './api';
 import { useTheme } from './useTheme';
 import { CharSourcePanel } from './components/CharSourcePanel';
@@ -18,6 +18,7 @@ const DEFAULT_STRATEGY: PartitionStrategy = {
   growth: 1.35,
   maxSize: 800,
   fallback: 'common-3500',
+  overrides: [],
 };
 
 export default function App() {
@@ -47,7 +48,7 @@ export default function App() {
     );
   }, [result, format]);
 
-  async function doProcess() {
+  async function runProcess(strat: PartitionStrategy) {
     if (!font) return;
     setError('');
     setBusy(true);
@@ -57,7 +58,7 @@ export default function App() {
           path: font.path,
           text,
           format,
-          strategy,
+          strategy: strat,
           sampleText: sampleText || text,
         }),
       );
@@ -66,6 +67,39 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function doProcess() {
+    runProcess(strategy);
+  }
+
+  // 分片手动编辑（F2.11）：在自动分片结果之上追加一条 override，
+  // 索引始终指向当前可见分片，因此叠加一致。见 PRD §6.3.1。
+  function applyOverride(ov: ManualOverride) {
+    const next = { ...strategy, overrides: [...(strategy.overrides ?? []), ov] };
+    setStrategy(next);
+    runProcess(next);
+  }
+  function mergeChunk(i: number) {
+    applyOverride({ kind: 'merge', chunks: [i, i + 1] });
+  }
+  function splitChunk(i: number) {
+    applyOverride({ kind: 'split', chunk: i, at: 'median' });
+  }
+  function pinChars(target: number, chars: string) {
+    const list = Array.from(chars.trim());
+    if (list.length === 0) return;
+    applyOverride({ kind: 'pin', chars: list, to: target });
+  }
+  function excludeChars(chars: string) {
+    const list = Array.from(chars.trim());
+    if (list.length === 0) return;
+    applyOverride({ kind: 'exclude', chars: list });
+  }
+  function resetOverrides() {
+    const next = { ...strategy, overrides: [] };
+    setStrategy(next);
+    runProcess(next);
   }
 
   function toggleFormat(f: OutputFormat) {
@@ -225,6 +259,12 @@ export default function App() {
                     chunks={result.chunks}
                     format={format[0]}
                     hitIndices={result.simulation?.hitIndices ?? []}
+                    overrides={strategy.overrides}
+                    onMerge={mergeChunk}
+                    onSplit={splitChunk}
+                    onPin={pinChars}
+                    onExclude={excludeChars}
+                    onReset={resetOverrides}
                   />
                 </Panel>
 
