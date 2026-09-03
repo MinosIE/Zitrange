@@ -104,7 +104,9 @@ export async function processFont(req: ProcessRequest): Promise<ProcessResult> {
   const charsetSize = ordered.length;
 
   // 3. 分片
-  const chunks: Chunk[] = partition(ordered, req.strategy);
+  const chunks: Chunk[] = partition(ordered, req.strategy, {
+    asciiFirst: req.strategy.asciiFirst ?? true,
+  });
 
   // 3.1 紧凑模式：计算可整块通配的 256 块（每个块仅归属唯一一片，避免片间 range 重叠）
   const compact = req.strategy.compact;

@@ -110,6 +110,11 @@ export function StrategyPanel({
   const handleCompactThreshold = (v: number) =>
     onStrategy({ ...strategy, compact: { wildcard256: compactOn, coverageThreshold: v } });
 
+  // ASCII 优先片（第 0 片单独成片）：默认开启，保证拉丁/数字/标点首屏局部性
+  const asciiFirstOn = strategy.asciiFirst ?? true;
+  const handleAsciiFirstToggle = (on: boolean) =>
+    onStrategy({ ...strategy, asciiFirst: on });
+
   return (
     <Panel step="03" title="分片策略" delay={delay}>
       <div className="flex flex-col gap-4">
@@ -129,7 +134,7 @@ export function StrategyPanel({
         </div>
 
         <div className="grid grid-cols-3 gap-2.5">
-          <Field label="单片字数" hint="默认 200">
+          <Field label="单片字数" hint="默认 500">
             <NumberField
               value={strategy.baseSize}
               onChange={(baseSize) => onStrategy({ ...strategy, baseSize })}
@@ -143,7 +148,7 @@ export function StrategyPanel({
               onChange={(growth) => onStrategy({ ...strategy, growth })}
             />
           </Field>
-          <Field label="单片上限">
+          <Field label="单片上限" hint="默认 1000">
             <NumberField
               value={strategy.maxSize}
               onChange={(maxSize) => onStrategy({ ...strategy, maxSize })}
@@ -186,6 +191,16 @@ export function StrategyPanel({
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12px] text-ink-600">256 块通配符（U+XX00-XXFF）</span>
             <Switch checked={compactOn} onChange={handleCompactToggle} label="紧凑模式" />
+          </div>
+        </Field>
+
+        <Field
+          label="ASCII 优先片"
+          hint="默认开启。把 ASCII/标点单独成第 0 片，命中率≈100% 且极小，利于首屏"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12px] text-ink-600">ASCII/标点单独成首片</span>
+            <Switch checked={asciiFirstOn} onChange={handleAsciiFirstToggle} label="ASCII 优先片" />
           </div>
         </Field>
 

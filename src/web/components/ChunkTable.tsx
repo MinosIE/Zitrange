@@ -1,7 +1,8 @@
 import type { ManualOverride, OutputFormat } from '@core/types';
 import { useState } from 'react';
 import type { ChunkResult } from '../api';
-import { Dropdown, fmtBytes, downloadText, downloadUrl } from './ui';
+import { Dropdown, fmtBytes, downloadUrl } from './ui';
+import { downloadZip, type ZipEntry } from '../zip';
 
 // 取分片前若干字符作为样本，便于一眼看清这一片大致覆盖哪些字；
 // 完整编码范围仍由调用方以 title 形式保留。
@@ -35,6 +36,7 @@ export function ChunkTable({
   const hit = new Set(hitIndices);
   const [charInput, setCharInput] = useState('');
   const [pinTarget, setPinTarget] = useState('0');
+  const [zipping, setZipping] = useState(false);
 
   const pinOptions = chunks.map((c) => ({
     value: String(c.index),
@@ -42,14 +44,36 @@ export function ChunkTable({
   }));
   const overrideCount = overrides?.length ?? 0;
 
-  function downloadAll() {
-    for (const c of chunks) {
-      for (const fmt of Object.keys(c.files) as OutputFormat[]) {
-        const f = c.files[fmt];
-        if (f) downloadUrl(f.url, `${baseName}-${c.index}.${fmt === 'ttf' ? 'ttf' : fmt}`);
+  // 下载全部：把所有分片字体 + CSS 打包成单个 .zip 一次性下载
+  async function downloadAll() {
+    if (zipping) return;
+    setZipping(true);
+    try {
+      const enc = new TextEncoder();
+      const entries: ZipEntry[] = [];
+      const fetches: Promise<void>[] = [];
+      for (const c of chunks) {
+        for (const fmt of Object.keys(c.files) as OutputFormat[]) {
+          const f = c.files[fmt];
+          if (!f) continue;
+          const fname = `${baseName}-${c.index}.${fmt === 'ttf' ? 'ttf' : fmt}`;
+          fetches.push(
+            fetch(f.url)
+              .then((r) => r.arrayBuffer())
+              .then((buf) => {
+                entries.push({ name: fname, data: new Uint8Array(buf) });
+              }),
+          );
+        }
       }
+      await Promise.all(fetches);
+      entries.push({ name: `${baseName}.css`, data: enc.encode(css) });
+      await downloadZip(`${baseName}.zip`, entries);
+    } catch (e) {
+      console.error('打包下载失败', e);
+    } finally {
+      setZipping(false);
     }
-    downloadText(css, `${baseName}.css`);
   }
 
   return (
@@ -163,9 +187,10 @@ export function ChunkTable({
             <button
               type="button"
               onClick={downloadAll}
-              className="zr-btn zr-btn-ghost px-2 py-0.5 text-[10px]"
+              disabled={zipping}
+              className="zr-btn zr-btn-ghost px-2 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
             >
-              下载全部
+              {zipping ? '打包中…' : '下载全部 (.zip)'}
             </button>
             <button
               type="button"

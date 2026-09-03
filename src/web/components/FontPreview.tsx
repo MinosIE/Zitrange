@@ -22,7 +22,7 @@ const FAMILY = 'zr-preview';
 
 export function FontPreview({ font }: { font: LoadedFont }) {
   const [text, setText] = useState(DEFAULT_SAMPLE);
-  const [size, setSize] = useState(32);
+  const [size, setSize] = useState(26);
 
   const ext = '.' + (font.fileName.split('.').pop() ?? 'ttf').toLowerCase();
   const format = FORMAT_HINT[ext] ?? 'truetype';

@@ -257,8 +257,8 @@ export function flattenChars(chars: readonly string[]): Codepoint[] {
 
 export const DEFAULT_STRATEGY: PartitionStrategy = {
   mode: 'hybrid',
-  baseSize: 200,
+  baseSize: 500,
   growth: 1.35,
-  maxSize: 800,
+  maxSize: 1000,
   fallback: 'common-3500',
 };

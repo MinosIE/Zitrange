@@ -26,6 +26,12 @@ export interface PartitionStrategy {
   fallback: FallbackCharset;
   /** 拆分全量字体：用字体 cmap 的全部码位作为字符集，绕过兜底字表上限 */
   useFontCmap?: boolean;
+  /**
+   * 是否把 ASCII/标点单独成第 0 片（PRD F2.4），默认 true。
+   * 关闭后这些字符并入正文片、第 0 片不再单独存在；
+   * 代价：拉丁/数字/标点的首屏局部性收益减弱（它们不再稳定先于正文片加载）。
+   */
+  asciiFirst?: boolean;
   /** 手动编辑，按顺序作用在自动分片结果之上 */
   overrides?: ManualOverride[];
   /**
