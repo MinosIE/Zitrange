@@ -9,6 +9,7 @@ import { StrategyPanel } from './components/StrategyPanel';
 import { SizeComparison } from './components/SizeComparison';
 import { AdvicePanel } from './components/AdvicePanel';
 import { ChunkTable } from './components/ChunkTable';
+import { FontPreview } from './components/FontPreview';
 import { OutputPanel } from './components/OutputPanel';
 import { Empty, Note, Panel, Stat, ThemeToggle } from './components/ui';
 
@@ -182,12 +183,24 @@ export default function App() {
 
           {/* ---- 右：结果 ---- */}
           <div className="flex min-w-0 flex-col gap-4">
+            {font && <FontPreview font={font} />}
+
             {!result ? (
               <Panel title="结果" delay={180}>
                 <Empty>
-                  加载字体并生成分片后，这里会给出体积对比、分片清单，
-                  <br />
-                  以及可以直接复制的 @font-face CSS。
+                  {font ? (
+                    <>
+                      点击左侧「生成分片」，这里会给出体积对比、分片清单，
+                      <br />
+                      以及可以直接复制的 @font-face CSS。
+                    </>
+                  ) : (
+                    <>
+                      加载字体并生成分片后，这里会给出体积对比、分片清单，
+                      <br />
+                      以及可以直接复制的 @font-face CSS。
+                    </>
+                  )}
                 </Empty>
               </Panel>
             ) : (
