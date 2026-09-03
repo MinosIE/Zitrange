@@ -1,4 +1,5 @@
 import type { CharFreq, Codepoint } from './types';
+import { charFreqCodepoints } from './assets/charfreq-zh';
 
 /**
  * 需要纳入字符集的码位区间（PRD §6.1）。
@@ -56,6 +57,29 @@ export function sortByFrequency(freq: CharFreq): Codepoint[] {
   return [...freq.entries()]
     .sort((a, b) => b[1] - a[1] || a[0] - b[0])
     .map(([cp]) => cp);
+}
+
+/** 全局字频表码位 → 名次（越小越高频）。不在表中的字名次取其长度，排最后。 */
+const GLOBAL_RANK: ReadonlyMap<number, number> = (() => {
+  const table = charFreqCodepoints();
+  const m = new Map<number, number>();
+  table.forEach((cp, i) => m.set(cp, i));
+  return m;
+})();
+
+/**
+ * 按全局字频表名次升序排列（PRD §6.2.1「字频」模式）。
+ * 忽略字符在站点文本中的真实频次，一律以通用字频为准——
+ * 这正是「内容不可预知时按通用频率优化」的含义。不在表中的字排最后，
+ * 同名次时按码位升序，保证结果稳定可复现。
+ */
+export function sortByGlobalRank(freq: CharFreq): Codepoint[] {
+  const max = GLOBAL_RANK.size;
+  return [...freq.keys()].sort((a, b) => {
+    const ra = GLOBAL_RANK.get(a) ?? max;
+    const rb = GLOBAL_RANK.get(b) ?? max;
+    return ra - rb || a - b;
+  });
 }
 
 /**

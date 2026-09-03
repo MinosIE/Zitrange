@@ -64,6 +64,15 @@ describe('validate', () => {
     expect(issues.some((i) => i.id === 'W_TTF')).toBe(true);
   });
 
+  it('字频模式 + 不兜底 报 W_FREQ_NO_FB', () => {
+    const issues = validate({
+      charCount: 100,
+      strategy: { ...strategy, mode: 'frequency', fallback: 'none' },
+      format: ['woff2'],
+    });
+    expect(issues.some((i) => i.id === 'W_FREQ_NO_FB')).toBe(true);
+  });
+
   it('maxSize 过大报 W_BIGCHUNK', () => {
     const issues = validate({
       charCount: 100,

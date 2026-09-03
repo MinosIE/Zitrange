@@ -1,5 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { applyFallback, extractCharFreq, isTargetCodepoint, sortByFrequency } from './charset';
+import {
+  applyFallback,
+  extractCharFreq,
+  isTargetCodepoint,
+  sortByFrequency,
+  sortByGlobalRank,
+  FALLBACK_SIZES,
+} from './charset';
+import { charFreqCodepoints } from './assets/charfreq-zh';
+
+describe('sortByGlobalRank（字频模式）', () => {
+  it('按全局字频名次升序，忽略站点真实频次', () => {
+    // '的' 全局最高频、count 仅 1；'齉' 不在表中（名次最大）却 count 极大
+    const freq = new Map<number, number>([
+      [0x9f49, 1000], // 齉（生僻，不在字频表）
+      [0x7684, 1], // 的
+    ]);
+    expect(sortByGlobalRank(freq)[0]).toBe(0x7684);
+  });
+
+  it('名次相同按码位升序，结果稳定', () => {
+    const freq = new Map<number, number>([
+      [0x4e00, 5], // 一
+      [0x7684, 9], // 的
+    ]);
+    expect(sortByGlobalRank(freq)).toEqual([0x7684, 0x4e00]);
+  });
+});
 
 describe('isTargetCodepoint', () => {
   it('接受 ASCII、CJK 基本区与扩展区', () => {
@@ -66,5 +93,30 @@ describe('applyFallback', () => {
     const freq = extractCharFreq('一');
     expect(applyFallback(freq, [0x4e01], 0)).toBe(0);
     expect(freq.has(0x4e01)).toBe(false);
+  });
+});
+
+describe('charFreqCodepoints（兜底字频表）', () => {
+  it('按字频降序排，而非码位序（的 必须排在 一 之前）', () => {
+    const cps = charFreqCodepoints();
+    const di = cps.indexOf(0x7684); // 的
+    const yi = cps.indexOf(0x4e00); // 一
+    expect(di).toBeGreaterThanOrEqual(0);
+    expect(yi).toBeGreaterThanOrEqual(0);
+    // 码位序下 一(0x4e00) 会早于 的(0x7684)，此处必须相反——这是本表的唯一正确性契约
+    expect(di).toBeLessThan(yi);
+  });
+
+  it('兜底 common-3500 时，最高频的「的」一定落在字符集内', () => {
+    const freq = extractCharFreq(''); // 模拟「留空」
+    applyFallback(freq, charFreqCodepoints(), FALLBACK_SIZES['common-3500']);
+    // 旧实现直接取 font.codepoints（码位升序），会把 的 排除在 3500 之外
+    expect(freq.has(0x7684)).toBe(true);
+  });
+
+  it('是一份去重、纯 CJK 基本区汉字的频率表', () => {
+    const cps = charFreqCodepoints();
+    expect(new Set(cps).size).toBe(cps.length); // 无重复
+    expect(cps.every((c) => c >= 0x4e00 && c <= 0x9fff)).toBe(true);
   });
 });
