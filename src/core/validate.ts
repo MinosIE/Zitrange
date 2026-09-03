@@ -58,13 +58,7 @@ export function validate(input: ValidationInput): ValidationIssue[] {
     });
   }
 
-  if (strategy.mode === 'frequency' && strategy.fallback === 'none' && !strategy.useFontCmap) {
-    issues.push({
-      id: 'W_FREQ_NO_FB',
-      level: 'warn',
-      text: '字频模式必须选择兜底字表：否则只能覆盖你粘贴的字，无法按通用字频覆盖未预知的页面内容。',
-    });
-  }
+  // 注：「字频 + 不兜底」不再告警——只切你输入的字、再按通用字频排序，是受支持的用法。
 
   if (strategy.maxSize > 5000) {
     issues.push({

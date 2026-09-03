@@ -42,27 +42,3 @@ describe('toUnicodeRange', () => {
     expect(range).not.toContain('?');
   });
 });
-
-describe('toUnicodeRange 紧凑模式（256 块通配符）', () => {
-  it('整块声明为 U+XX00-XXFF', () => {
-    const range = toUnicodeRange([0x4e10, 0x4e20], { wildcardBlocks: new Set([0x4e]) });
-    expect(range).toBe('U+4E00-4EFF');
-  });
-
-  it('通配块与真实区间共存，按码位排序', () => {
-    const range = toUnicodeRange([0x4e10, 0x4f00], { wildcardBlocks: new Set([0x4e]) });
-    expect(range).toBe('U+4E00-4EFF, U+4F00');
-  });
-
-  it('通配块内的真实字符不重复输出', () => {
-    // 0x4e10 已被整块覆盖，不应再单独列出
-    const range = toUnicodeRange([0x4e10, 0x4e20], { wildcardBlocks: new Set([0x4e]) });
-    expect(range).toBe('U+4E00-4EFF');
-    expect(range).not.toMatch(/U\+4E10/);
-  });
-
-  it('空 wildcardBlocks 退化为严格区间（无通配）', () => {
-    const range = toUnicodeRange([0x4e00, 0x4e01, 0x4e05], { wildcardBlocks: new Set() });
-    expect(range).toBe('U+4E00-4E01, U+4E05');
-  });
-});

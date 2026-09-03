@@ -1,10 +1,7 @@
 import { useMemo, useState } from 'react';
-import { extractCharFreq, FALLBACK_SIZES } from '@core/charset';
-import type {
-  ManualOverride,
-  OutputFormat,
-  PartitionStrategy,
-} from '@core/types';
+import { extractCharFreq, FALLBACK_SIZES, ASCII_PUNCT } from '@core/charset';
+import type { OutputFormat, PartitionStrategy } from '@core/types';
+import { normalizeStrategy } from '@core/strategy';
 import { processFont, type ProcessResult } from './api';
 import { useTheme } from './useTheme';
 import { CharSourcePanel } from './components/CharSourcePanel';
@@ -21,10 +18,15 @@ const DEFAULT_STRATEGY: PartitionStrategy = {
   baseSize: 500,
   growth: 1.35,
   maxSize: 1000,
-  fallback: 'common-3500',
+  // 默认开启「拆分全量字体」（整本字形入库，兜底/保底项此时无额外作用）。
+  // 用户关闭它后即切回「仅用户内容」：兜底字表置为不兜底、ASCII/标点保底关闭，
+  // 使切片只包含其输入文本（见下方 onUseFontCmapChange）。
+  fallback: 'none',
   useFontCmap: true,
+  includeAsciiPunct: false,
   asciiFirst: true,
-  overrides: [],
+  targetSlices: 20,
+  asciiAlwaysLoad: false,
 };
 
 export default function App() {
@@ -33,18 +35,45 @@ export default function App() {
   const [text, setText] = useState('');
   const [sampleText, setSampleText] = useState('');
   const [format, setFormat] = useState<OutputFormat[]>(['woff2']);
-  const [strategy, setStrategy] = useState<PartitionStrategy>(DEFAULT_STRATEGY);
+  const [strategy, setStrategy] = useState<PartitionStrategy>(() =>
+    normalizeStrategy(DEFAULT_STRATEGY),
+  );
   const [result, setResult] = useState<ProcessResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  // 字符集规模估算：文本去重 + 兜底字表将追加的量。
-  // 全量模式直接取字体 cmap 码位数。
-  // 只用于驱动前端实时校验，真实值以服务端返回的 charsetSize 为准。
+  // ASCII/标点保底会注入的字符数（受字体支持裁剪），用于估算字符集规模。
+  const asciiGuardCount = useMemo(() => {
+    if (strategy.useFontCmap || !(strategy.includeAsciiPunct ?? true) || !font?.codepoints) {
+      return 0;
+    }
+    const supported = new Set(font.codepoints);
+    let n = 0;
+    for (const cp of ASCII_PUNCT) if (supported.has(cp)) n++;
+    return n;
+  }, [strategy.useFontCmap, strategy.includeAsciiPunct, font]);
+
+  // 字符集规模估算：文本去重 + 兜底字表追加 + ASCII/标点保底追加。
+  // 全量模式直接取字体 cmap 码位数。仅驱动前端实时校验，真实值以服务端 charsetSize 为准。
   const charCount = useMemo(() => {
     if (strategy.useFontCmap && font?.codepoints) return font.codepoints.length;
-    return extractCharFreq(text).size + (FALLBACK_SIZES[strategy.fallback] ?? 0);
-  }, [text, strategy.fallback, strategy.useFontCmap, font]);
+    return (
+      extractCharFreq(text).size +
+      (FALLBACK_SIZES[strategy.fallback] ?? 0) +
+      asciiGuardCount
+    );
+  }, [text, strategy.fallback, strategy.useFontCmap, strategy.includeAsciiPunct, asciiGuardCount, font]);
+
+  // 字符集是否可能含 ASCII/标点：决定「ASCII 优先片 / 首屏片永载」是否有意义。
+  // 全量模式 cmap 已含；否则取决于保底开关或用户文本是否含这些字符。
+  const asciiPunctSet = useMemo(() => new Set(ASCII_PUNCT), [ASCII_PUNCT]);
+  const textHasAscii = useMemo(
+    () => [...text].some((ch) => asciiPunctSet.has(ch.codePointAt(0) ?? -1)),
+    [text, asciiPunctSet],
+  );
+  const asciiRelevant = strategy.useFontCmap
+    ? true
+    : (strategy.includeAsciiPunct ?? true) || textHasAscii;
 
   const totalOut = useMemo(() => {
     if (!result) return 0;
@@ -80,28 +109,8 @@ export default function App() {
     runProcess(strategy);
   }
 
-  // 分片手动编辑（F2.11）：在自动分片结果之上追加一条 override，
-  // 索引始终指向当前可见分片，因此叠加一致。见 PRD §6.3.1。
-  function applyOverride(ov: ManualOverride) {
-    const next = { ...strategy, overrides: [...(strategy.overrides ?? []), ov] };
-    setStrategy(next);
-    runProcess(next);
-  }
-  function pinChars(target: number, chars: string) {
-    const list = Array.from(chars.trim());
-    if (list.length === 0) return;
-    applyOverride({ kind: 'pin', chars: list, to: target });
-  }
-  function excludeChars(chars: string) {
-    const list = Array.from(chars.trim());
-    if (list.length === 0) return;
-    applyOverride({ kind: 'exclude', chars: list });
-  }
-  function resetOverrides() {
-    const next = { ...strategy, overrides: [] };
-    setStrategy(next);
-    runProcess(next);
-  }
+  // 所有策略变更都经此入口归一化，保证界面选项与实际生效的模式一致。
+  const updateStrategy = (s: PartitionStrategy) => setStrategy(normalizeStrategy(s));
 
   function toggleFormat(f: OutputFormat) {
     setFormat((cur) => (cur.includes(f) ? cur.filter((x) => x !== f) : [...cur, f]));
@@ -159,14 +168,22 @@ export default function App() {
               sampleText={sampleText}
               onSampleChange={setSampleText}
               useFontCmap={strategy.useFontCmap ?? false}
-              onUseFontCmapChange={(v) => setStrategy({ ...strategy, useFontCmap: v })}
+              onUseFontCmapChange={(v) =>
+                updateStrategy(
+                  v
+                    ? { ...strategy, useFontCmap: true }
+                    : // 关闭全量拆分 → 切回「仅用户内容」，避免残留兜底字表/保底字符
+                      { ...strategy, useFontCmap: false, fallback: 'none', includeAsciiPunct: false },
+                )
+              }
               fontCodepoints={font?.codepoints.length}
             />
             <StrategyPanel
               font={font}
               charCount={charCount}
+              asciiRelevant={asciiRelevant}
               strategy={strategy}
-              onStrategy={setStrategy}
+              onStrategy={updateStrategy}
               format={format}
               onToggleFormat={toggleFormat}
             />
@@ -175,7 +192,7 @@ export default function App() {
               type="button"
               className="zr-btn zr-btn-primary w-full py-2.5 text-[13px]"
               onClick={doProcess}
-              disabled={busy || !font}
+              disabled={busy || !font || (!strategy.useFontCmap && text.trim() === '')}
             >
               {busy ? (
                 <>
@@ -187,6 +204,11 @@ export default function App() {
               )}
             </button>
             {!font && <span className="text-center text-[10px] text-ink-300">先加载一个字体文件</span>}
+            {font && !strategy.useFontCmap && text.trim() === '' && (
+              <span className="text-center text-[10px] text-ink-300">
+                粘贴文本，或开启「拆分全量字体」
+              </span>
+            )}
           </div>
 
           {/* ---- 右：结果 ---- */}
@@ -265,12 +287,8 @@ export default function App() {
                     chunks={result.chunks}
                     format={format[0]}
                     hitIndices={result.simulation?.hitIndices ?? []}
-                    overrides={strategy.overrides}
                     css={result.css}
                     baseName={baseName}
-                    onPin={pinChars}
-                    onExclude={excludeChars}
-                    onReset={resetOverrides}
                   />
                 </Panel>
 

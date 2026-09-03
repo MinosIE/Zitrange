@@ -64,13 +64,13 @@ describe('validate', () => {
     expect(issues.some((i) => i.id === 'W_TTF')).toBe(true);
   });
 
-  it('字频模式 + 不兜底 报 W_FREQ_NO_FB', () => {
+  it('字频模式 + 不兜底 不再告警（只切输入内容，按通用字频排序）', () => {
     const issues = validate({
       charCount: 100,
       strategy: { ...strategy, mode: 'frequency', fallback: 'none' },
       format: ['woff2'],
     });
-    expect(issues.some((i) => i.id === 'W_FREQ_NO_FB')).toBe(true);
+    expect(issues.some((i) => i.id === 'W_FREQ_NO_FB')).toBe(false);
   });
 
   it('maxSize 过大报 W_BIGCHUNK', () => {

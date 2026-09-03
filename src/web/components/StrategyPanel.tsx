@@ -9,19 +9,25 @@ import type {
 } from '@core/types';
 import { ChipGroup, Dropdown, Field, Note, NumberField, Panel, Segmented, Switch } from './ui';
 
+/**
+ * 纯输入（未开全量拆分）且选了兜底字表时的分片模式。
+ * 原「站点」与「混合」在「不兜底」时输出完全一致（都不补兜底、都按文本频次排序），
+ * 故合并为「按文本频次」；「不兜底」时整个字段隐藏（见 showMode）。
+ */
 const MODES: { value: StrategyMode; label: string }[] = [
-  { value: 'hybrid', label: '混合' },
-  { value: 'frequency', label: '字频' },
-  { value: 'site', label: '站点' },
-  { value: 'codepoint', label: '码位' },
+  { value: 'hybrid', label: '按文本频次' },
+  { value: 'frequency', label: '按通用字频' },
+  { value: 'codepoint', label: '按码位紧凑' },
 ];
 
 const MODE_HINT: Record<StrategyMode, string> = {
-  hybrid: '站点用字优先排前，字频表兜底补全生僻字。兼顾二者，适合大多数站点。',
-  frequency: '完全按通用字频降序切分。适合内容不可预知的博客、CMS 与 UGC。',
-  site: '只打包扫描到的字符，通常 500–5000 字。适合文案固定的落地页与活动页。',
+  hybrid: '按你文本里的出现频次排序，最常用的字进最小首片。文案固定的页面首选。',
+  frequency: '按通用字频降序排序，而非你的文本频次。适合内容不可预知、样本不具代表性的场景。',
+  site: '已合并进「按文本频次」，界面不再单独提供。',
   codepoint:
-    '按码位升序聚类，让每片尽量聚集相邻字，unicode-range 折叠成少量区间（单行更短）。代价：高频字不再集中于小首屏片，F4.3 首屏收益减弱。适合全量字体（cmap 多为连续块）分片。',
+    '按码位升序聚类，unicode-range 折叠成少量区间（单行更短）。代价：高频字不再集中于小首屏片，首屏收益减弱。',
+  block:
+    '把覆盖码位区间等分为 N 个连续码块，片数严格 = 目标片数，最可预测。仅全量模式提供。',
 };
 
 /**
@@ -32,10 +38,24 @@ const MODE_HINT: Record<StrategyMode, string> = {
 const MODES_FULL: { value: StrategyMode; label: string }[] = [
   { value: 'frequency', label: '按通用字频' },
   { value: 'codepoint', label: '按码位邻近' },
+  { value: 'block', label: '按码块均分' },
 ];
 
 const MODE_HINT_FULL =
   '全量模式已包含字体全部字形，且不读取任何样本/站点文本。两种排序：按通用字频（高频字在前，无论页面内容如何都稳定命中前面的片）或按码位邻近（每片聚集相邻字，unicode-range 折叠成少量区间，单行更短）。适合内容不可预知（博客 / UGC / CMS）。';
+
+/** 分片尺寸档位：与「单片字数 / 递增系数」互斥，二者不同时出现 */
+const SIZE_MODES: { value: 'base' | 'target'; label: string }[] = [
+  { value: 'base', label: '按每片字数' },
+  { value: 'target', label: '按目标片数' },
+];
+
+/** ASCII 首屏片档位：合并原「ASCII 优先片」与「首屏片永载」两个嵌套开关 */
+const ASCII_SLICE_MODES: { value: 'inline' | 'first' | 'always'; label: string }[] = [
+  { value: 'inline', label: '并入正文' },
+  { value: 'first', label: '单独成片' },
+  { value: 'always', label: '单独·永载' },
+];
 
 const FALLBACKS: { value: FallbackCharset; label: string }[] = [
   { value: 'none', label: '不兜底' },
@@ -53,6 +73,7 @@ const FORMATS: { value: OutputFormat; label: string; hint: string }[] = [
 export function StrategyPanel({
   font,
   charCount,
+  asciiRelevant,
   strategy,
   onStrategy,
   format,
@@ -61,30 +82,15 @@ export function StrategyPanel({
 }: {
   font: FontInfo | null;
   charCount: number;
+  asciiRelevant: boolean;
   strategy: PartitionStrategy;
   onStrategy: (s: PartitionStrategy) => void;
   format: OutputFormat[];
   onToggleFormat: (f: OutputFormat) => void;
   delay?: number;
 }) {
-  // 切换模式时联动兜底字表：站点强制不兜底，字频不允许为空
-  const handleModeChange = (mode: StrategyMode) => {
-    const next: PartitionStrategy = { ...strategy, mode };
-    if (mode === 'site') next.fallback = 'none';
-    else if (mode === 'frequency' && strategy.fallback === 'none') {
-      next.fallback = 'common-3500';
-    }
-    onStrategy(next);
-  };
-
-  // 字频模式下，「不兜底」会失去按通用字频覆盖的能力，标注「不推荐」引导但不禁止
-  const fallbackOptions = useMemo(
-    () =>
-      strategy.mode === 'frequency'
-        ? FALLBACKS.map((o) => (o.value === 'none' ? { ...o, note: '不推荐' } : o))
-        : FALLBACKS,
-    [strategy.mode],
-  );
+  // 切换模式不再联动兜底字表：两者已解耦，由 normalizeStrategy 统一约束值域。
+  const handleModeChange = (mode: StrategyMode) => onStrategy({ ...strategy, mode });
 
   // 校验是 core 里的纯函数，参数一改即时出结论，不打断输入
   const issues = useMemo(
@@ -92,28 +98,65 @@ export function StrategyPanel({
     [charCount, strategy, format, font],
   );
 
-  // 全量模式下字符集已含全部字形且不读取文本；排序可选按通用字频或按码位邻近
+  // 全量模式：字符集已含全部字形且不读取文本，排序按通用字频 / 码位邻近 / 码块均分。
+  // 纯输入且「不兜底」时，字符集就是你输入的字，按文本频次排序恒最优 → 整个字段隐藏。
   const fullMode = !!strategy.useFontCmap;
   const modeOptions = fullMode ? MODES_FULL : MODES;
-  const displayMode: StrategyMode = fullMode
-    ? modeOptions.some((o) => o.value === strategy.mode)
-      ? strategy.mode
-      : 'frequency'
-    : strategy.mode;
+  const showMode = fullMode || strategy.fallback !== 'none';
+  // normalizeStrategy 已保证 mode 落在 modeOptions 内，此处兜底仅作防御
+  const displayMode: StrategyMode = modeOptions.some((o) => o.value === strategy.mode)
+    ? strategy.mode
+    : fullMode
+      ? 'frequency'
+      : 'hybrid';
   const modeHint = fullMode ? MODE_HINT_FULL : MODE_HINT[strategy.mode];
 
-  // 紧凑模式（256 块通配符）：默认关闭，保证正确性；开启后由覆盖率阈值控制整块声明
-  const compactOn = strategy.compact?.wildcard256 ?? false;
-  const compactThreshold = strategy.compact?.coverageThreshold ?? 0.9;
-  const handleCompactToggle = (on: boolean) =>
-    onStrategy({ ...strategy, compact: { wildcard256: on, coverageThreshold: compactThreshold } });
-  const handleCompactThreshold = (v: number) =>
-    onStrategy({ ...strategy, compact: { wildcard256: compactOn, coverageThreshold: v } });
+  // ASCII/标点保底（内容轴）：是否注入数字/字母/标点；全量模式下为无作用项
+  const asciiGuardOn = strategy.includeAsciiPunct ?? true;
+  const handleAsciiGuardToggle = (on: boolean) =>
+    onStrategy({ ...strategy, includeAsciiPunct: on });
 
-  // ASCII 优先片（第 0 片单独成片）：默认开启，保证拉丁/数字/标点首屏局部性
+  // ASCII 首屏片（布局轴）：把原「优先片」+「首屏片永载」两个嵌套开关合成三档。
+  // 与上面的保底开关正交，故「不注入 + 单独成片」仍可表达（落地页自带英文时有用）。
   const asciiFirstOn = strategy.asciiFirst ?? true;
-  const handleAsciiFirstToggle = (on: boolean) =>
-    onStrategy({ ...strategy, asciiFirst: on });
+  const asciiSliceMode: 'inline' | 'first' | 'always' = !asciiFirstOn
+    ? 'inline'
+    : strategy.asciiAlwaysLoad
+      ? 'always'
+      : 'first';
+  const handleAsciiSliceMode = (m: 'inline' | 'first' | 'always') =>
+    onStrategy({
+      ...strategy,
+      asciiFirst: m !== 'inline',
+      asciiAlwaysLoad: m === 'always',
+    });
+  const asciiSliceHint = !asciiRelevant
+    ? '当前字符集不含 ASCII/标点，此选项无作用'
+    : asciiSliceMode === 'inline'
+      ? 'ASCII/标点并入正文片，片数更少，但首屏局部性收益减弱'
+      : asciiSliceMode === 'first'
+        ? '把 ASCII/标点单独成第 0 片，命中率≈100% 且极小，利于首屏'
+        : '首屏片不写 unicode-range，浏览器无条件下载，保证首屏零解析成本';
+
+  // 分片尺寸：码块模式完全不读 baseSize/growth/maxSize，只提供「码块数量」；
+  // 其余模式由 targetSlices 是否 >0 推导当前档位，不新增状态字段。
+  const isBlock = strategy.mode === 'block';
+  const growth = strategy.growth;
+  const targetSlices = strategy.targetSlices ?? 0;
+  const handleTargetSlices = (v: number) =>
+    onStrategy({ ...strategy, targetSlices: v > 0 ? v : undefined });
+  const sizeMode: 'base' | 'target' = isBlock || targetSlices > 0 ? 'target' : 'base';
+  const handleSizeMode = (m: 'base' | 'target') =>
+    onStrategy(
+      m === 'target'
+        ? { ...strategy, targetSlices: targetSlices > 0 ? targetSlices : 20 }
+        : { ...strategy, targetSlices: undefined },
+    );
+  const targetHint = isBlock
+    ? '均匀码块的块数，片数严格等于该值；0 = 自动推导'
+    : strategy.mode === 'codepoint'
+      ? '片数上限：段数超过时合并相邻段，控制 @font-face 数量'
+      : '按字形总数推导固定每片字数（覆盖单片字数/递增系数），避免大字符集切出几十片';
 
   return (
     <Panel step="03" title="分片策略" delay={delay}>
@@ -122,106 +165,110 @@ export function StrategyPanel({
           <ChipGroup values={format} onToggle={onToggleFormat} options={FORMATS} />
         </Field>
 
-        <div className="flex flex-col gap-1.5">
-          <Field label="分片模式">
-            <Segmented
-              value={displayMode}
-              onChange={handleModeChange}
-              options={modeOptions}
-            />
-          </Field>
-          <span className="text-[10px] leading-snug text-ink-300">{modeHint}</span>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2.5">
-          <Field label="单片字数" hint="默认 500">
-            <NumberField
-              value={strategy.baseSize}
-              onChange={(baseSize) => onStrategy({ ...strategy, baseSize })}
-            />
-          </Field>
-          <Field label="递增系数" hint="1 = 固定分片">
-            <NumberField
-              value={strategy.growth}
-              step={0.05}
-              min={0}
-              onChange={(growth) => onStrategy({ ...strategy, growth })}
-            />
-          </Field>
-          <Field label="单片上限" hint="默认 1000">
-            <NumberField
-              value={strategy.maxSize}
-              onChange={(maxSize) => onStrategy({ ...strategy, maxSize })}
-            />
-          </Field>
-        </div>
-
-        {strategy.mode === 'codepoint' && (
-          <Field label="最大片数" hint="超过则合并相邻段，默认 512">
-            <NumberField
-              value={strategy.maxChunks ?? 512}
-              min={1}
-              onChange={(maxChunks) => onStrategy({ ...strategy, maxChunks })}
-            />
-          </Field>
+        {showMode && (
+          <div className="flex flex-col gap-1.5">
+            <Field label="分片模式">
+              <Segmented
+                value={displayMode}
+                onChange={handleModeChange}
+                options={modeOptions}
+              />
+            </Field>
+            <span className="text-[10px] leading-snug text-ink-300">{modeHint}</span>
+          </div>
         )}
+
+        {/* 分片尺寸：两种档位互斥，不同时出现；码块模式只提供「码块数量」 */}
+        <div className="flex flex-col gap-2.5">
+          {!isBlock && (
+            <Field label="分片尺寸">
+              <Segmented
+                value={sizeMode}
+                onChange={handleSizeMode}
+                options={SIZE_MODES}
+              />
+            </Field>
+          )}
+          {sizeMode === 'base' ? (
+            <div className={`grid gap-2.5 ${growth > 1 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              <Field label="单片字数" hint="默认 500">
+                <NumberField
+                  value={strategy.baseSize}
+                  onChange={(baseSize) => onStrategy({ ...strategy, baseSize })}
+                />
+              </Field>
+              <Field label="递增系数" hint="1 = 固定分片">
+                <NumberField
+                  value={strategy.growth}
+                  step={0.05}
+                  min={0}
+                  onChange={(g) => onStrategy({ ...strategy, growth: g })}
+                />
+              </Field>
+              {/* 单片上限仅在递增系数 > 1 时有意义：growth<=1 时 chunkSizeAt 直接返回 baseSize */}
+              {growth > 1 && (
+                <Field label="单片上限" hint="默认 1000">
+                  <NumberField
+                    value={strategy.maxSize}
+                    onChange={(maxSize) => onStrategy({ ...strategy, maxSize })}
+                  />
+                </Field>
+              )}
+            </div>
+          ) : (
+            <Field label={isBlock ? '码块数量' : '目标片数'} hint={targetHint}>
+              <NumberField
+                value={targetSlices}
+                min={0}
+                onChange={handleTargetSlices}
+              />
+            </Field>
+          )}
+        </div>
 
         <Field
           label="兜底字表"
           hint={
             strategy.useFontCmap
               ? '全量模式已覆盖 cmap 全部字形，兜底字表不再生效'
-              : strategy.mode === 'site'
-                ? '站点模式只用你提供的字，不补兜底'
-                : '站点未覆盖的字，按通用字频补全'
+              : '你输入的字之外，按通用字频补全；选「不兜底」则只切你输入的字'
           }
         >
           <Dropdown
             value={strategy.fallback}
             onChange={(fallback) => onStrategy({ ...strategy, fallback })}
-            options={fallbackOptions}
-            disabled={strategy.mode === 'site' || strategy.useFontCmap}
+            options={FALLBACKS}
+            disabled={strategy.useFontCmap}
           />
         </Field>
 
         <Field
-          label="紧凑模式（unicode-range 折叠）"
-          hint="默认关闭。开启后用 256 块通配符缩短单行 range"
+          label="ASCII/标点保底"
+          hint={
+            strategy.useFontCmap
+              ? '全量模式已含 ASCII/标点，此选项无额外作用'
+              : '默认关闭，只切你输入的字符。开启会额外注入数字 / 字母 / 中英文标点，保证首屏可渲染'
+          }
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[12px] text-ink-600">256 块通配符（U+XX00-XXFF）</span>
-            <Switch checked={compactOn} onChange={handleCompactToggle} label="紧凑模式" />
+            <span className="text-[12px] text-ink-600">数字 / 字母 / 标点保底</span>
+            <Switch
+              checked={asciiGuardOn}
+              onChange={handleAsciiGuardToggle}
+              label="ASCII/标点保底"
+              disabled={strategy.useFontCmap}
+            />
           </div>
         </Field>
 
-        <Field
-          label="ASCII 优先片"
-          hint="默认开启。把 ASCII/标点单独成第 0 片，命中率≈100% 且极小，利于首屏"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[12px] text-ink-600">ASCII/标点单独成首片</span>
-            <Switch checked={asciiFirstOn} onChange={handleAsciiFirstToggle} label="ASCII 优先片" />
-          </div>
+        <Field label="ASCII 首屏片" hint={asciiSliceHint}>
+          <Segmented
+            value={asciiSliceMode}
+            onChange={handleAsciiSliceMode}
+            options={ASCII_SLICE_MODES}
+            disabled={!asciiRelevant}
+          />
         </Field>
-
-        {compactOn && (
-          <>
-            <Field
-              label="覆盖率阈值"
-              hint="块内已含字符占比达到才整块声明；越高越安全，但越短收益越小"
-            >
-              <NumberField
-                value={compactThreshold}
-                step={0.05}
-                min={0}
-                onChange={handleCompactThreshold}
-              />
-            </Field>
-            <Note level="warn">
-              通配符会声明字体可能不含的缺口码位：当页面渲染到缺口字时，浏览器找不到字形会回退到下一个字体，可能造成同段落字体不一致。仅在内容封闭 / 静态、可接受回退风险的站点启用。
-            </Note>
-          </>
-        )}
 
         {issues.length > 0 && (
           <div className="flex flex-col gap-1.5 border-t border-line pt-3">

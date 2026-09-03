@@ -6,7 +6,7 @@ export type CharFreq = Map<Codepoint, number>;
 
 export type SourceKind = 'text' | 'files' | 'url' | 'builtin';
 
-export type StrategyMode = 'site' | 'frequency' | 'hybrid' | 'codepoint';
+export type StrategyMode = 'site' | 'frequency' | 'hybrid' | 'codepoint' | 'block';
 
 /** 兜底字表档位。数字表示取字表前 N 字 */
 export type FallbackCharset = 'none' | 'common-3500' | 'common-7000' | 'gb2312';
@@ -27,47 +27,44 @@ export interface PartitionStrategy {
   /** 拆分全量字体：用字体 cmap 的全部码位作为字符集，绕过兜底字表上限 */
   useFontCmap?: boolean;
   /**
+   * ASCII/标点保底：是否自动把数字、字母、中英文标点等「任何页面都用得到」的字符
+   * 注入字符集（受字体支持情况裁剪），默认 true。
+   * 开启时这些字永远在产物里，配合「ASCII 优先片」可让首屏立即可用；
+   * 关闭则只切你输入的字符（你的文本若含 ASCII/标点仍会被纳入），
+   * 适合想严格只出自己字、不要任何多余字符的场景。
+   * 全量模式（useFontCmap）下此选项无作用（cmap 已含这些字）。
+   */
+  includeAsciiPunct?: boolean;
+  /**
    * 是否把 ASCII/标点单独成第 0 片（PRD F2.4），默认 true。
    * 关闭后这些字符并入正文片、第 0 片不再单独存在；
    * 代价：拉丁/数字/标点的首屏局部性收益减弱（它们不再稳定先于正文片加载）。
    */
   asciiFirst?: boolean;
-  /** 手动编辑，按顺序作用在自动分片结果之上 */
-  overrides?: ManualOverride[];
+  /**
+   * 目标片数：>0 时按字符集字形总数动态推导每片字数（固定分片），
+   * 覆盖 baseSize/growth，使片数大致稳定、不随字形总量暴涨。
+   * 全量中文约 20000 字、每片固定 500–1000 会切出 20–40 片请求过多，
+   * 设目标片数（如 20）即可把每片字数自动放大到 ~1000，片数收敛到目标值附近。
+   * 码块模式（mode='block'）下此值直接作为「均匀码块」的块数。
+   * 码位模式（mode='codepoint'）下此值作为片数上限（等价 maxChunks）——
+   * 该模式在 partition() 中先于动态片数推导就 return，故由 partitionByCodepoint 自行消费。
+   */
+  targetSlices?: number;
+  /**
+   * 首屏片永载：开启（且 asciiFirst 开启）时，ASCII/标点片不写 unicode-range，
+   * 浏览器无条件下载，保证首屏零解析成本、立即可用（参考 demo 的 basic 片）。
+   */
+  asciiAlwaysLoad?: boolean;
   /**
    * 仅 mode='codepoint' 生效：片数硬上限。
    * 字符集极度分散（几乎无连续段）时每片退化为单字、片数暴涨，
    * 用此上限把相邻段合并以控制 @font-face 数量（合并后的片 range 会变长，属可接受退化）。
+   * 取值优先级：本字段 > targetSlices（界面「按目标片数」档）> 默认 512。
+   * 界面已不再直接暴露本字段，保留它仅供历史配置与程序化调用。
    */
   maxChunks?: number;
-  /**
-   * 紧凑模式（unicode-range 折叠，PRD §6.4）。默认不设置以保证正确性。
-   * 开启后对每个 256 码位对齐块：若该块内已含字符占比 ≥ coverageThreshold，
-   * 则把该块整体声明为 U+XX00-XXFF（含字体可能不存在的缺口码位），以缩短单行 range。
-   * 代价：缺口码位被声明为本字体的覆盖范围，当页面真的渲染到缺口字时，
-   * 浏览器找不到字形会回退到下一个 font，可能造成同段落字体不一致。
-   * 适用：内容封闭 / 静态、可接受回退风险的站点；默认不开启。
-   */
-  compact?: CompactOptions;
 }
-
-/**
- * 紧凑模式配置（见 PartitionStrategy.compact）。
- * 计算发生在管线侧：每个 256 块仅在其「所有已含字符都落在同一片」且
- * 「已含字符占比 ≥ coverageThreshold」时才被整块通配，避免片间 range 重叠。
- */
-export interface CompactOptions {
-  /** 256 块通配符总开关，默认 false（关闭以保证正确性） */
-  wildcard256: boolean;
-  /** 覆盖率阈值 0–1，达到才对整块应用通配符，默认 0.9 */
-  coverageThreshold: number;
-}
-
-export type ManualOverride =
-  | { kind: 'merge'; chunks: [number, number] }
-  | { kind: 'split'; chunk: number; at: 'median' | number }
-  | { kind: 'pin'; chars: string[]; to: number }
-  | { kind: 'exclude'; chars: string[] };
 
 export interface Chunk {
   index: number;

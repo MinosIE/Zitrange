@@ -2,6 +2,18 @@ import type { CharFreq, Codepoint } from './types';
 import { charFreqCodepoints } from './assets/charfreq-zh';
 
 /**
+ * 任何页面都会用到的 ASCII 与常用标点，保底纳入字符集，确保产物含数字 / 字母 / 标点。
+ * 受字体支持情况裁剪：字体不含的码位不会被加入。是否注入由策略项 `includeAsciiPunct` 控制。
+ */
+export const ASCII_PUNCT: readonly number[] = (() => {
+  const out: number[] = [];
+  for (let cp = 0x20; cp <= 0x7e; cp++) out.push(cp); // ASCII 可打印
+  for (let cp = 0x3000; cp <= 0x303f; cp++) out.push(cp); // CJK 符号和标点
+  for (let cp = 0xff01; cp <= 0xff5e; cp++) out.push(cp); // 全角 ASCII 变体
+  return out;
+})();
+
+/**
  * 需要纳入字符集的码位区间（PRD §6.1）。
  * 排除 ASCII 控制字符与私用区。
  */

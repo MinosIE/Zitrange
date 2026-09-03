@@ -1,4 +1,4 @@
-import type { Chunk, Codepoint, ManualOverride, PartitionStrategy } from './types';
+import type { Chunk, Codepoint, PartitionStrategy } from './types';
 
 /**
  * 归入「ASCII 优先片」的码位（PRD F2.4）。
@@ -33,6 +33,9 @@ export interface PartitionOptions {
  *
  * @param ordered 已按频率降序排列的码位
  */
+/** 动态片数推导用的最小每片字数：避免小字符集被目标片数压成过多碎片的下限 */
+const MIN_CHUNK = 100;
+
 export function partition(
   ordered: readonly Codepoint[],
   strategy: PartitionStrategy,
@@ -40,6 +43,18 @@ export function partition(
 ): Chunk[] {
   if (strategy.mode === 'codepoint') {
     return partitionByCodepoint(ordered, strategy, options);
+  }
+  if (strategy.mode === 'block') {
+    return partitionByBlock(ordered, strategy, options);
+  }
+
+  // 动态片数：targetSlices>0 时按字形总数推导固定每片字数，覆盖 baseSize/growth，
+  // 使片数大致稳定（全量中文约 2 万时也不会切出几十片请求）。
+  const eff: PartitionStrategy = { ...strategy };
+  if (strategy.targetSlices && strategy.targetSlices > 0) {
+    const derived = Math.ceil(ordered.length / strategy.targetSlices);
+    eff.baseSize = Math.min(Math.max(derived, MIN_CHUNK), strategy.maxSize || 1000);
+    eff.growth = 1;
   }
 
   const { asciiFirst = true } = options;
@@ -55,7 +70,7 @@ export function partition(
   let offset = 0;
   let k = 0;
   while (offset < body.length) {
-    const size = chunkSizeAt(strategy, k);
+    const size = chunkSizeAt(eff, k);
     groups.push(body.slice(offset, offset + size));
     offset += size;
     k++;
@@ -65,16 +80,12 @@ export function partition(
   if (groups.length > 1) {
     const last = groups[groups.length - 1];
     const prev = groups[groups.length - 2];
-    if (last.length < strategy.baseSize / 3) {
+    if (last.length < eff.baseSize / 3) {
       groups.splice(groups.length - 2, 2, [...prev, ...last]);
     }
   }
 
-  const applied = strategy.overrides?.length
-    ? applyOverrides(groups, strategy.overrides)
-    : groups;
-
-  return applied.map((codepoints, index) => ({ index, codepoints }));
+  return groups.map((codepoints, index) => ({ index, codepoints }));
 }
 
 /** 码位聚类模式下的默认片数上限（见 PartitionStrategy.maxChunks） */
@@ -159,17 +170,75 @@ export function partitionByCodepoint(
   }
   if (bufSize > 0) groups.push(buf);
 
-  // 3) 段数超过上限则顺序合并相邻段，控制 @font-face 数量
-  const maxChunks = strategy.maxChunks ?? DEFAULT_MAX_CHUNKS;
+  // 3) 段数超过上限则顺序合并相邻段，控制 @font-face 数量。
+  //    取值优先级：maxChunks（显式/历史配置）> targetSlices（界面「按目标片数」档）> 默认 512。
+  //    注：码位模式在 partition() 里先于 targetSlices 推导就 return（见第 44 行），
+  //    故此处自行消费 targetSlices，否则界面上的「目标片数」在该模式下会静默失效。
+  const maxChunks =
+    strategy.maxChunks ??
+    (strategy.targetSlices && strategy.targetSlices > 0
+      ? strategy.targetSlices
+      : DEFAULT_MAX_CHUNKS);
   const capped = capToMaxChunks(groups, maxChunks);
 
   const finalGroups = asciiChunk.length > 0 ? [asciiChunk, ...capped] : capped;
 
-  const applied = strategy.overrides?.length
-    ? applyOverrides(finalGroups, strategy.overrides)
-    : finalGroups;
+  return finalGroups.map((codepoints, index) => ({ index, codepoints }));
+}
 
-  return applied.map((codepoints, index) => ({ index, codepoints }));
+/**
+ * 均匀码块模式（mode='block'）。
+ * 把字符集覆盖的码位区间 [minCp, maxCp] 等分为 targetSlices 个连续码块，
+ * 每块一个 @font-face，其 unicode-range 经连续合并后对有字区间输出单区间
+ * （字体覆盖密集时即整块 U+XXXX-YYYY，形似 demo 的固定码块拆分，且 100% 正确）。
+ * 与码位装箱模式（partitionByCodepoint）不同：块边界是「等距码位分段」，
+ * 不依赖连续段检测，片数严格 = targetSlices，最可预测。
+ * 仅声明字体实际拥有的字形（run 合并呈现），不声明缺口字，正确性等同其他模式。
+ */
+export function partitionByBlock(
+  ordered: readonly Codepoint[],
+  strategy: PartitionStrategy,
+  options: PartitionOptions = {},
+): Chunk[] {
+  const { asciiFirst = true } = options;
+
+  let asciiChunk: Codepoint[] = [];
+  let body = ordered;
+  if (asciiFirst) {
+    asciiChunk = ordered.filter(isAsciiOrPunct);
+    body = ordered.filter((cp) => !isAsciiOrPunct(cp));
+  }
+
+  const sorted = [...new Set(body)].sort((a, b) => a - b);
+  if (sorted.length === 0) {
+    const only = asciiChunk.length ? [asciiChunk] : [];
+    return only.map((codepoints, index) => ({ index, codepoints }));
+  }
+
+  const minCp = sorted[0];
+  const maxCp = sorted[sorted.length - 1];
+  const span = maxCp - minCp + 1;
+  const total = sorted.length;
+
+  // 目标片数：显式 targetSlices 直接用；否则按字形总数给合理默认，避免过多片
+  let n = strategy.targetSlices && strategy.targetSlices > 0
+    ? strategy.targetSlices
+    : Math.min(Math.max(Math.ceil(total / 1000), 6), 48);
+  n = Math.min(n, total); // 片数不超过字符数
+
+  const blockSize = Math.ceil(span / n);
+  const groups: Codepoint[][] = [];
+  for (let i = 0; i < n; i++) {
+    const lo = minCp + i * blockSize;
+    if (lo > maxCp) break;
+    const hi = Math.min(lo + blockSize - 1, maxCp);
+    const seg = sorted.filter((cp) => cp >= lo && cp <= hi);
+    if (seg.length > 0) groups.push(seg);
+  }
+
+  const finalGroups = asciiChunk.length > 0 ? [asciiChunk, ...groups] : groups;
+
+  return finalGroups.map((codepoints, index) => ({ index, codepoints }));
 }
 
 /**
@@ -193,66 +262,6 @@ function capToMaxChunks(groups: Codepoint[][], maxChunks: number): Codepoint[][]
   }
   if (buf.length > 0) out.push(buf);
   return out;
-}
-
-/**
- * 把手动编辑操作作用在自动分片结果上（PRD F2.11）。
- * 操作按数组顺序依次应用，每步都基于上一步的结果。
- */
-export function applyOverrides(
-  chunks: readonly Codepoint[][],
-  overrides: readonly ManualOverride[],
-): Codepoint[][] {
-  let cur = chunks.map((c) => [...c]);
-
-  for (const ov of overrides) {
-    switch (ov.kind) {
-      case 'merge': {
-        const [a, b] = ov.chunks;
-        if (a === b || cur[a] === undefined || cur[b] === undefined) break;
-        const merged = [...cur[a], ...cur[b]];
-        cur = cur.filter((_, i) => i !== a && i !== b);
-        cur.splice(Math.min(a, b), 0, merged);
-        break;
-      }
-      case 'split': {
-        const src = cur[ov.chunk];
-        if (!src || src.length < 2) break;
-        const raw = ov.at === 'median' ? Math.ceil(src.length / 2) : ov.at;
-        const pos = Math.max(1, Math.min(Math.trunc(raw), src.length - 1));
-        cur = [...cur];
-        cur.splice(ov.chunk, 1, src.slice(0, pos), src.slice(pos));
-        break;
-      }
-      case 'pin': {
-        const cps = new Set(flattenChars(ov.chars));
-        cur = cur.map((c) => c.filter((cp) => !cps.has(cp)));
-        const target = cur[ov.to];
-        // 钉入的字符放在片首：该片一旦被加载，这些字必定可用
-        if (target) cur[ov.to] = [...cps, ...target];
-        break;
-      }
-      case 'exclude': {
-        const cps = new Set(flattenChars(ov.chars));
-        cur = cur.map((c) => c.filter((cp) => !cps.has(cp))).filter((c) => c.length > 0);
-        break;
-      }
-    }
-  }
-
-  return cur;
-}
-
-/** 把字符串数组展开为去重后的码位数组，按码位迭代以正确处理代理对 */
-export function flattenChars(chars: readonly string[]): Codepoint[] {
-  const out = new Set<Codepoint>();
-  for (const s of chars) {
-    for (const ch of s) {
-      const cp = ch.codePointAt(0);
-      if (cp !== undefined) out.add(cp);
-    }
-  }
-  return [...out];
 }
 
 export const DEFAULT_STRATEGY: PartitionStrategy = {

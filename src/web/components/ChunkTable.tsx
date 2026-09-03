@@ -1,7 +1,7 @@
-import type { ManualOverride, OutputFormat } from '@core/types';
+import type { OutputFormat } from '@core/types';
 import { useState } from 'react';
 import type { ChunkResult } from '../api';
-import { Dropdown, fmtBytes, downloadUrl } from './ui';
+import { fmtBytes, downloadUrl } from './ui';
 import { downloadZip, type ZipEntry } from '../zip';
 
 // 取分片前若干字符作为样本，便于一眼看清这一片大致覆盖哪些字；
@@ -16,33 +16,17 @@ export function ChunkTable({
   chunks,
   format,
   hitIndices,
-  overrides,
   css,
   baseName,
-  onPin,
-  onExclude,
-  onReset,
 }: {
   chunks: ChunkResult[];
   format: OutputFormat;
   hitIndices: number[];
-  overrides?: ManualOverride[];
   css: string;
   baseName: string;
-  onPin: (targetIndex: number, chars: string) => void;
-  onExclude: (chars: string) => void;
-  onReset: () => void;
 }) {
   const hit = new Set(hitIndices);
-  const [charInput, setCharInput] = useState('');
-  const [pinTarget, setPinTarget] = useState('0');
   const [zipping, setZipping] = useState(false);
-
-  const pinOptions = chunks.map((c) => ({
-    value: String(c.index),
-    label: `#${c.index} · ${c.codepoints.length}字`,
-  }));
-  const overrideCount = overrides?.length ?? 0;
 
   // 下载全部：把所有分片字体 + CSS 打包成单个 .zip 一次性下载
   async function downloadAll() {
@@ -149,59 +133,15 @@ export function ChunkTable({
         </table>
       </div>
 
-      <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface-2 p-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            value={charInput}
-            onChange={(e) => setCharInput(e.target.value)}
-            placeholder="输入字符，如 品牌名"
-            className="zr-field min-w-0 flex-1 px-2 py-1 text-[12px]"
-          />
-          <Dropdown value={pinTarget} onChange={setPinTarget} options={pinOptions} />
-          <button
-            type="button"
-            onClick={() => {
-              onPin(Number(pinTarget), charInput);
-              setCharInput('');
-            }}
-            className="zr-btn zr-btn-ghost px-2 py-1 text-[11px]"
-          >
-            钉到片
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onExclude(charInput);
-              setCharInput('');
-            }}
-            className="zr-btn zr-btn-ghost px-2 py-1 text-[11px]"
-          >
-            排除
-          </button>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-ink-300">
-            手动编辑叠加在自动分片之上；改参数重新生成时保留
-          </span>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={downloadAll}
-              disabled={zipping}
-              className="zr-btn zr-btn-ghost px-2 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {zipping ? '打包中…' : '下载全部 (.zip)'}
-            </button>
-            <button
-              type="button"
-              onClick={onReset}
-              disabled={overrideCount === 0}
-              className="zr-btn zr-btn-ghost px-2 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              重置手动编辑{overrideCount > 0 ? ` (${overrideCount})` : ''}
-            </button>
-          </div>
-        </div>
+      <div className="flex items-center justify-end rounded-xl border border-line bg-surface-2 p-2.5">
+        <button
+          type="button"
+          onClick={downloadAll}
+          disabled={zipping}
+          className="zr-btn zr-btn-ghost px-2 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {zipping ? '打包中…' : '下载全部 (.zip)'}
+        </button>
       </div>
     </div>
   );

@@ -283,20 +283,28 @@ export function Segmented<T extends string>({
   value,
   onChange,
   options,
+  disabled = false,
 }: {
   value: T;
   onChange: (v: T) => void;
   options: { value: T; label: string }[];
+  disabled?: boolean;
 }) {
   return (
-    <div className="flex gap-1 rounded-lg border border-line bg-surface-2 p-1">
+    <div
+      className={`flex gap-1 rounded-lg border border-line bg-surface-2 p-1 ${
+        disabled ? 'cursor-not-allowed opacity-50' : ''
+      }`}
+    >
       {options.map((o) => {
         const on = value === o.value;
         return (
           <button
             key={o.value}
             type="button"
-            onClick={() => onChange(o.value)}
+            disabled={disabled}
+            aria-disabled={disabled}
+            onClick={() => !disabled && onChange(o.value)}
             className={`zr-btn min-w-0 flex-1 px-2 py-1 text-[12px] transition-colors ${
               on
                 ? 'bg-brand font-semibold text-white'
@@ -316,10 +324,12 @@ export function Switch({
   checked,
   onChange,
   label,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
@@ -327,8 +337,10 @@ export function Switch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      onClick={() => onChange(!checked)}
-      className={`zr-switch ${checked ? 'is-on' : ''}`}
+      aria-disabled={disabled}
+      disabled={disabled}
+      onClick={() => !disabled && onChange(!checked)}
+      className={`zr-switch ${checked ? 'is-on' : ''} ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
     >
       <span className="zr-switch-thumb" />
     </button>
