@@ -1,45 +1,71 @@
 /**
- * 字频覆盖率对照表。
- * 来源：清华大学汉字频度表（6763 字样本、8640 万语料），公开统计资料。
- * 含义：取「现代汉语最常用前 N 字」可覆盖书面语的比例，
- * 用于 UI 展示「取前 N 字即可覆盖 X%」。
+ * 字体覆盖形态分析：上传字体后，仅凭其 cmap 码位集合即可判断它是
+ * 「全量连续 CJK 字体」（如完整 Noto / 思源，CJK 基本区铺满且连续）
+ * 还是「稀疏子集字体」（如先按某段文本子集化出的散点字形）。
+ *
+ * 判据只看 CJK 统一汉字区 4E00–9FFF（共 20992 个码位）：
+ * - cjkRatio   = 落在该区的码位数 / 20992        （覆盖比例）
+ * - cjkDensity = 落在该区的码位数 / 覆盖跨度       （连续密度）
+ * 全量连续需 ratio≥0.9 且 density≥0.85；稀疏为 density<0.5。
+ *
+ * 这个判定驱动前端提示：全量连续才适合「常用字优先」2 片短 range 方案，
+ * 稀疏子集无论如何都压不出短 range（PRD §6.4 硬限制）。
  */
-export interface CoveragePoint {
-  count: number;
-  /** 覆盖率，0–100 */
-  coverage: number;
+
+export const CJK_LO = 0x4e00;
+export const CJK_HI = 0x9fff;
+export const CJK_BLOCK_SIZE = CJK_HI - CJK_LO + 1; // 20992
+
+export interface CoverageSummary {
+  /** 字体支持的码位总数 */
+  totalCovered: number;
+  /** 落在 CJK 基本区 4E00–9FFF 的码位数 */
+  cjkCount: number;
+  /** 基本区覆盖比例：cjkCount / 20992 */
+  cjkRatio: number;
+  /** 覆盖跨度（区内最小~最大码位+1），无 CJK 时为 0 */
+  cjkSpan: number;
+  /** 连续密度：cjkCount / cjkSpan，越接近 1 越连续 */
+  cjkDensity: number;
+  /** 是否为完整连续 CJK 字体（ratio≥0.9 且 density≥0.85） */
+  isFullContiguous: boolean;
+  /** 是否为稀疏散点子集（有 CJK 但 density<0.5） */
+  isSparse: boolean;
 }
 
-export const COVERAGE_TABLE: CoveragePoint[] = [
-  { count: 500, coverage: 78.53202 },
-  { count: 1000, coverage: 91.91527 },
-  { count: 1500, coverage: 96.47563 },
-  { count: 2000, coverage: 98.38765 },
-  { count: 2500, coverage: 99.24388 },
-  { count: 3000, coverage: 99.63322 },
-  { count: 3500, coverage: 99.82015 },
-  { count: 4000, coverage: 99.91645 },
-  { count: 4500, coverage: 99.96471 },
-  { count: 5000, coverage: 99.98633 },
-  { count: 5500, coverage: 99.99553 },
-  { count: 6000, coverage: 99.99901 },
-  { count: 6763, coverage: 100 },
-];
+/** 全量连续的判定阈值 */
+export const FULL_RATIO_MIN = 0.9;
+export const FULL_DENSITY_MIN = 0.85;
+/** 稀疏的判定阈值（与全量互斥） */
+export const SPARSE_DENSITY_MAX = 0.5;
 
-/**
- * 取前 n 个最常用汉字的覆盖率（相邻点线性插值），n 超出表范围时取两端。
- */
-export function coverageFor(count: number): number {
-  if (count <= 0) return 0;
-  const last = COVERAGE_TABLE[COVERAGE_TABLE.length - 1];
-  if (count >= last.count) return 100;
-  for (let i = 1; i < COVERAGE_TABLE.length; i++) {
-    const hi = COVERAGE_TABLE[i];
-    const lo = COVERAGE_TABLE[i - 1];
-    if (count <= hi.count) {
-      const t = (count - lo.count) / (hi.count - lo.count);
-      return lo.coverage + t * (hi.coverage - lo.coverage);
+export function analyzeCoverage(codepoints: number[]): CoverageSummary {
+  const totalCovered = codepoints.length;
+  let cjkCount = 0;
+  let minCjk = Infinity;
+  let maxCjk = -Infinity;
+  for (const cp of codepoints) {
+    if (cp >= CJK_LO && cp <= CJK_HI) {
+      cjkCount++;
+      if (cp < minCjk) minCjk = cp;
+      if (cp > maxCjk) maxCjk = cp;
     }
   }
-  return 100;
+
+  const cjkRatio = cjkCount / CJK_BLOCK_SIZE;
+  const cjkSpan = cjkCount > 0 ? maxCjk - minCjk + 1 : 0;
+  const cjkDensity = cjkSpan > 0 ? cjkCount / cjkSpan : 0;
+
+  const isFullContiguous = cjkCount > 0 && cjkRatio >= FULL_RATIO_MIN && cjkDensity >= FULL_DENSITY_MIN;
+  const isSparse = cjkCount > 0 && cjkDensity < SPARSE_DENSITY_MAX;
+
+  return {
+    totalCovered,
+    cjkCount,
+    cjkRatio,
+    cjkSpan,
+    cjkDensity,
+    isFullContiguous,
+    isSparse,
+  };
 }

@@ -36,4 +36,9 @@ describe('normalizeStrategy', () => {
   it('maxChunks 仅在显式 > 0 时保留', () => {
     expect(normalizeStrategy(base()).maxChunks).toBeUndefined();
   });
+
+  it('commonFirst 默认 false，显式值保留', () => {
+    expect(normalizeStrategy(base()).commonFirst).toBe(false);
+    expect(normalizeStrategy(base({ commonFirst: true })).commonFirst).toBe(true);
+  });
 });

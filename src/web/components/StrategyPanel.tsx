@@ -62,14 +62,27 @@ export function StrategyPanel({
     ...(preset === 'custom' ? [{ value: 'custom' as const, label: '自定义' }] : []),
   ];
 
+  // ASCII/标点首屏片（布局轴）：yipai 的 basic 片，开启即「单独成片 + 随页面立即加载」
+  const asciiFirstOn = strategy.asciiFirst ?? true;
+
   // 简介：取向句 + 随当前字符集规模的实时换算（无内容时退回取向句）
   const scaleClause = useMemo(() => {
     if (charCount <= 0) return '';
+    const n = charCount.toLocaleString('zh-CN');
+    if (strategy.commonFirst) {
+      // 常用字优先：常用 3500 独立成片 + 剩余按 baseSize 均匀切片
+      const commonCount = Math.min(charCount, 3500);
+      const restCount = charCount - commonCount;
+      const slices =
+        Math.ceil(commonCount / strategy.baseSize) +
+        Math.ceil(restCount / strategy.baseSize) +
+        (asciiFirstOn ? 1 : 0);
+      return `按当前约 ${n} 字 → 常用字优先：约 ${slices} 片（常用 3500 独立成片 + 其余按每片 ${strategy.baseSize} 切）`;
+    }
     const perSlice = strategy.baseSize;
     const slices = Math.max(1, Math.ceil(charCount / perSlice));
-    const n = charCount.toLocaleString('zh-CN');
     return `按当前约 ${n} 字 → 约 ${slices} 片、单片约 ${perSlice} 字`;
-  }, [charCount, strategy.baseSize]);
+  }, [charCount, strategy.baseSize, strategy.commonFirst, asciiFirstOn]);
 
   const presetHint = useMemo(() => {
     const base =
@@ -79,8 +92,6 @@ export function StrategyPanel({
     return scaleClause ? `${base}。${scaleClause}` : base;
   }, [preset, scaleClause]);
 
-  // ASCII/标点首屏片（布局轴）：yipai 的 basic 片，开启即「单独成片 + 随页面立即加载」
-  const asciiFirstOn = strategy.asciiFirst ?? true;
   const handleAsciiFirst = (on: boolean) =>
     onStrategy({ ...strategy, asciiFirst: on, asciiAlwaysLoad: on });
   const asciiHint = !asciiRelevant
@@ -91,14 +102,25 @@ export function StrategyPanel({
 
   // 校验是 core 里的纯函数，参数一改即时出结论，不打断输入
   const issues = useMemo(
-    () => validate({ charCount, strategy, format, font: font ?? undefined }),
+    () =>
+      validate({
+        charCount,
+        strategy,
+        format,
+        font: font ?? undefined,
+        codepoints: font?.codepoints,
+      }),
     [charCount, strategy, format, font],
   );
+
+  // 「仅 1 片」属非阻断提示，弱化为标题后的「?」浮层，避免抢占底部告警区
+  const oneSliceIssue = issues.find((i) => i.id === 'W_ONE_SLICE');
+  const otherIssues = issues.filter((i) => i.id !== 'W_ONE_SLICE');
 
   const fullMode = !!strategy.useFontCmap;
 
   return (
-    <Panel step="03" title="分片策略" delay={delay}>
+    <Panel step="03" title="分片策略" tip={oneSliceIssue?.text} delay={delay}>
       <div className="flex flex-col gap-4">
         <Field label="输出格式">
           <ChipGroup values={format} onToggle={onToggleFormat} options={FORMATS} />
@@ -134,6 +156,20 @@ export function StrategyPanel({
           </div>
         </Field>
 
+        <Field
+          label="常用字优先"
+          hint="把常用 3500 字（U+4E00–U+5BAB）独立成首片，其余按每片字数切。常用片常驻高频区间，页面通常只命中它即首屏成形，罕见字片按需懒加载"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[12px] text-ink-600">常用 3500 字独立成首片</span>
+            <Switch
+              checked={strategy.commonFirst ?? false}
+              onChange={(on) => onStrategy({ ...strategy, commonFirst: on })}
+              label="常用字优先"
+            />
+          </div>
+        </Field>
+
         {!fullMode && (
           <Field
             label="兜底字表"
@@ -147,9 +183,9 @@ export function StrategyPanel({
           </Field>
         )}
 
-        {issues.length > 0 && (
+        {otherIssues.length > 0 && (
           <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-            {issues.map((i) => (
+            {otherIssues.map((i) => (
               <Note key={i.id} level={i.level}>
                 {i.text}
               </Note>

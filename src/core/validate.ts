@@ -1,4 +1,5 @@
 import type { FontInfo, OutputFormat, PartitionStrategy, ValidationIssue } from './types';
+import { analyzeCoverage } from './coverage';
 
 export interface ValidationInput {
   charCount: number;
@@ -6,6 +7,8 @@ export interface ValidationInput {
   format: OutputFormat[];
   /** 可选：用于校验字符集是否超出字体可用字形 */
   font?: FontInfo;
+  /** 可选：字体实际支持的码位集合，用于判定覆盖形态（全量连续 / 稀疏子集） */
+  codepoints?: number[];
 }
 
 /**
@@ -17,6 +20,26 @@ export interface ValidationInput {
 export function validate(input: ValidationInput): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const { charCount, strategy, format, font } = input;
+  const codepoints = input.codepoints ?? font?.codepoints;
+
+  // 覆盖形态判定：全量连续 CJK 字体适合「常用字优先」2 片短 range 方案；
+  // 稀疏子集字体无论如何都压不出短 range，提前提示避免误解。
+  const coverage =
+    codepoints && codepoints.length > 0 ? analyzeCoverage(codepoints) : null;
+
+  if (coverage?.isFullContiguous) {
+    issues.push({
+      id: 'I_FULL_CJK',
+      level: 'info',
+      text: `检测到完整连续 CJK 字体（覆盖基本区 ${Math.round(coverage.cjkRatio * 100)}%），建议用「常用字优先」模式：仅 2 片、unicode-range 极短。`,
+    });
+  } else if (coverage?.isSparse) {
+    issues.push({
+      id: 'W_SPARSE',
+      level: 'warn',
+      text: `字体仅含 ${coverage.totalCovered.toLocaleString()} 个散点字形（CJK 密度 ${Math.round(coverage.cjkDensity * 100)}%），unicode-range 将较长且无法压缩为连续区间；如需短 range，请上传完整连续字体。`,
+    });
+  }
 
   if (charCount <= 0 && !strategy.useFontCmap) {
     issues.push({
@@ -28,6 +51,14 @@ export function validate(input: ValidationInput): ValidationIssue[] {
 
   if (strategy.baseSize < 1) {
     issues.push({ id: 'E_BASE', level: 'warn', text: '每片字数（baseSize）必须 ≥ 1。' });
+  }
+
+  if (charCount > 0 && charCount <= strategy.baseSize && !strategy.commonFirst) {
+    issues.push({
+      id: 'W_ONE_SLICE',
+      level: 'warn',
+      text: `当前字符数（${charCount}）≤ 每片字数（${strategy.baseSize}），正文将只切出 1 片，相当于整批一次性下载、无按需加载收益。如需懒加载，请调小「每片字数」（如中切 4000 / 细切 1500）或开启「常用字优先」。`,
+    });
   }
 
   if (format.length === 0) {

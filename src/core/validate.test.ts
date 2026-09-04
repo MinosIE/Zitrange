@@ -43,6 +43,42 @@ describe('validate', () => {
     expect(issues.some((i) => i.id === 'W_MISS')).toBe(true);
   });
 
+  it('字符数 ≤ 每片字数报 W_ONE_SLICE', () => {
+    const issues = validate({ charCount: 7900, strategy: { ...strategy, baseSize: 8000 }, format: ['woff2'] });
+    expect(issues.some((i) => i.id === 'W_ONE_SLICE')).toBe(true);
+  });
+
+  it('字符数 > 每片字数不报 W_ONE_SLICE', () => {
+    const issues = validate({ charCount: 7900, strategy, format: ['woff2'] });
+    expect(issues.some((i) => i.id === 'W_ONE_SLICE')).toBe(false);
+  });
+
+  it('完整连续 CJK 字体报 I_FULL_CJK', () => {
+    const codepoints: number[] = [];
+    for (let cp = 0x4e00; cp <= 0x9fff; cp++) codepoints.push(cp);
+    const issues = validate({ charCount: codepoints.length, strategy, format: ['woff2'], codepoints });
+    expect(issues.some((i) => i.id === 'I_FULL_CJK')).toBe(true);
+    expect(issues.some((i) => i.id === 'W_SPARSE')).toBe(false);
+  });
+
+  it('稀疏子集字体报 W_SPARSE', () => {
+    const N = 7900;
+    const codepoints: number[] = [];
+    for (let i = 0; i < N; i++) codepoints.push(0x4e00 + Math.round((i * (0x9fff - 0x4e00)) / (N - 1)));
+    const issues = validate({ charCount: codepoints.length, strategy, format: ['woff2'], codepoints });
+    expect(issues.some((i) => i.id === 'W_SPARSE')).toBe(true);
+    expect(issues.some((i) => i.id === 'I_FULL_CJK')).toBe(false);
+  });
+
+  it('常用字优先时即使字符数≤每片字数也不报 W_ONE_SLICE', () => {
+    const issues = validate({
+      charCount: 7900,
+      strategy: { ...strategy, baseSize: 8000, commonFirst: true },
+      format: ['woff2'],
+    });
+    expect(issues.some((i) => i.id === 'W_ONE_SLICE')).toBe(false);
+  });
+
   it('所有提示都有 info/warn 级别（绝不阻断）', () => {
     const issues = validate({ charCount: 9000, strategy, format: ['ttf'] });
     for (const i of issues) {

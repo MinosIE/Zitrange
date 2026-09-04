@@ -13,6 +13,10 @@ export function isAsciiOrPunct(cp: number): boolean {
   );
 }
 
+/** 常用字优先模式下的「常用字」区间：CJK 统一汉字区前 3500 字（U+4E00–U+5BAB） */
+export const COMMON_LO = 0x4e00;
+export const COMMON_HI = 0x5bab;
+
 export interface PartitionOptions {
   /** 是否把 ASCII/标点单独成第 0 片，默认 true */
   asciiFirst?: boolean;
@@ -39,6 +43,7 @@ export function partition(
 ): Chunk[] {
   const { asciiFirst = true } = options;
   const baseSize = Math.max(1, Math.floor(strategy.baseSize) || 4000);
+  const commonFirst = strategy.commonFirst ?? false;
 
   let asciiChunk: Codepoint[] = [];
   let body = ordered;
@@ -49,7 +54,38 @@ export function partition(
 
   const sorted = [...new Set(body)].sort((a, b) => a - b);
 
-  // 1) 拆成极大连续段（步长 > 1 即断开）
+  // 常用字优先：把常用 3500 字（U+4E00–5BAB）独立成首组，其余按原样均匀切片。
+  // 这样常用片常驻高频连续区间（短 range），罕见字片按需懒加载（方案 B 的 common/ext 双层）。
+  let groups: Codepoint[][];
+  if (commonFirst) {
+    const common: Codepoint[] = [];
+    const rest: Codepoint[] = [];
+    for (const cp of sorted) {
+      if (cp >= COMMON_LO && cp <= COMMON_HI) common.push(cp);
+      else rest.push(cp);
+    }
+    groups = [...uniformGroups(common, baseSize), ...uniformGroups(rest, baseSize)];
+  } else {
+    groups = uniformGroups(sorted, baseSize);
+  }
+
+  // 片数超过上限则顺序合并相邻段，控制 @font-face 数量
+  const maxChunks = strategy.maxChunks ?? DEFAULT_MAX_CHUNKS;
+  const capped = capToMaxChunks(groups, maxChunks);
+
+  const finalGroups = asciiChunk.length > 0 ? [asciiChunk, ...capped] : capped;
+
+  return finalGroups.map((codepoints, index) => ({ index, codepoints }));
+}
+
+/**
+ * 把已按码位升序、去重的字符集按固定每片字数装进定长片：
+ * 1) 先拆成极大连续段（步长 > 1 即断开）；
+ * 2) 连续段不被拆散，故每片仍是单区间，单行 `unicode-range` 最短；
+ * 3) 超长连续段（如整个 CJK 基本区）切成连续子段，每段仍是单区间。
+ */
+function uniformGroups(sorted: Codepoint[], baseSize: number): Codepoint[][] {
+  // 1) 拆成极大连续段
   const runs: Codepoint[][] = [];
   let run: Codepoint[] = [];
   for (const cp of sorted) {
@@ -61,7 +97,7 @@ export function partition(
   }
   if (run.length > 0) runs.push(run);
 
-  // 2) 把连续段按固定每片字数装进定长片（连续段不被拆散，故每片仍是单区间）
+  // 2) 把连续段按固定每片字数装进定长片
   const groups: Codepoint[][] = [];
   let buf: Codepoint[] = [];
   let bufSize = 0;
@@ -88,13 +124,7 @@ export function partition(
   }
   if (bufSize > 0) groups.push(buf);
 
-  // 3) 片数超过上限则顺序合并相邻段，控制 @font-face 数量
-  const maxChunks = strategy.maxChunks ?? DEFAULT_MAX_CHUNKS;
-  const capped = capToMaxChunks(groups, maxChunks);
-
-  const finalGroups = asciiChunk.length > 0 ? [asciiChunk, ...capped] : capped;
-
-  return finalGroups.map((codepoints, index) => ({ index, codepoints }));
+  return groups;
 }
 
 /**

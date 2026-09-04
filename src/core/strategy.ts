@@ -21,6 +21,7 @@ export function normalizeStrategy(s: PartitionStrategy): PartitionStrategy {
     includeAsciiPunct: s.includeAsciiPunct ?? true,
     asciiFirst: s.asciiFirst ?? true,
     asciiAlwaysLoad: s.asciiAlwaysLoad ?? false,
+    commonFirst: s.commonFirst ?? false,
   };
   if (s.maxChunks && s.maxChunks > 0) out.maxChunks = s.maxChunks;
   return out;

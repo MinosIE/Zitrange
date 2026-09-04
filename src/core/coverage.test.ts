@@ -1,33 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import { COVERAGE_TABLE, coverageFor } from './coverage';
+import { analyzeCoverage, CJK_LO, CJK_HI } from './coverage';
 
-describe('coverageFor', () => {
-  it('0 字覆盖率为 0', () => {
-    expect(coverageFor(0)).toBe(0);
+/** 生成 [lo, hi] 闭区间的所有码位 */
+function range(lo: number, hi: number): number[] {
+  const out: number[] = [];
+  for (let cp = lo; cp <= hi; cp++) out.push(cp);
+  return out;
+}
+
+describe('analyzeCoverage', () => {
+  it('完整连续 CJK 字体判定为全量连续', () => {
+    const c = analyzeCoverage(range(CJK_LO, CJK_HI));
+    expect(c.cjkCount).toBe(CJK_HI - CJK_LO + 1);
+    expect(c.cjkDensity).toBeGreaterThanOrEqual(0.85);
+    expect(c.isFullContiguous).toBe(true);
+    expect(c.isSparse).toBe(false);
   });
 
-  it('超出表范围取 100', () => {
-    expect(coverageFor(10000)).toBe(100);
-    expect(coverageFor(6763)).toBe(100);
+  it('7900 散点字形判定为稀疏子集', () => {
+    // 在 4E00–9FFF 内均匀散点 7900 个（密度约 0.376，模拟文本子集字体）
+    const N = 7900;
+    const cps: number[] = [];
+    for (let i = 0; i < N; i++) cps.push(CJK_LO + Math.round((i * (CJK_HI - CJK_LO)) / (N - 1)));
+    const c = analyzeCoverage(cps);
+    expect(c.cjkCount).toBe(N);
+    expect(c.cjkDensity).toBeLessThan(0.5);
+    expect(c.isSparse).toBe(true);
+    expect(c.isFullContiguous).toBe(false);
   });
 
-  it('表内已知点精确命中', () => {
-    expect(coverageFor(500)).toBeCloseTo(78.53202, 4);
-    expect(coverageFor(3500)).toBeCloseTo(99.82015, 4);
+  it('小块连续（3000 字）既非全量也非稀疏', () => {
+    const c = analyzeCoverage(range(CJK_LO, CJK_LO + 2999));
+    expect(c.cjkDensity).toBeGreaterThanOrEqual(0.85);
+    expect(c.isFullContiguous).toBe(false);
+    expect(c.isSparse).toBe(false);
   });
 
-  it('两点之间线性插值', () => {
-    // 500→78.53, 1000→91.92，中点应为约 85.22
-    expect(coverageFor(750)).toBeGreaterThan(78.53202);
-    expect(coverageFor(750)).toBeLessThan(91.91527);
-    expect(coverageFor(750)).toBeCloseTo((78.53202 + 91.91527) / 2, 2);
-  });
-
-  it('覆盖率单调递增', () => {
-    let prev = -1;
-    for (const p of COVERAGE_TABLE) {
-      expect(p.coverage).toBeGreaterThanOrEqual(prev);
-      prev = p.coverage;
-    }
+  it('空集合不产生任何判定', () => {
+    const c = analyzeCoverage([]);
+    expect(c.isFullContiguous).toBe(false);
+    expect(c.isSparse).toBe(false);
+    expect(c.totalCovered).toBe(0);
   });
 });

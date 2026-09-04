@@ -57,4 +57,34 @@ describe('partition（按码位均匀切片）', () => {
     expect(chunks[0].codepoints).toContain(0x41);
     expect(chunks[0].codepoints).toContain(0x4e00);
   });
+
+  describe('常用字优先（commonFirst）', () => {
+    it('常用 3500 字独立成首片且折叠为单条短区间 U+4E00-5BAB', () => {
+      const common = Array.from({ length: 0x5bab - 0x4e00 + 1 }, (_, i) => 0x4e00 + i);
+      const ext = [0x5bac, 0x5bad, 0x9fff];
+      const chunks = partition([...common, ...ext], strat({ baseSize: 8000, commonFirst: true }), {
+        asciiFirst: false,
+      });
+      expect(toUnicodeRange(chunks[0].codepoints)).toBe('U+4E00-5BAB');
+    });
+
+    it('常用片排在剩余片之前', () => {
+      const cps = [0x4e00, 0x4e01, 0x9fff, 0x9ffe]; // 2 常用 + 2 剩余
+      const chunks = partition(cps, strat({ baseSize: 1, commonFirst: true }), { asciiFirst: false });
+      expect(chunks.length).toBe(4); // baseSize 1 → 每字一片
+      // 前两个片必为常用字，剩余字落在更后面的片
+      expect(chunks[0].codepoints).toContain(0x4e00);
+      expect(chunks[1].codepoints).toContain(0x4e01);
+      const tail = chunks.slice(2).flatMap((c) => c.codepoints);
+      expect(tail).toContain(0x9fff);
+      expect(tail).toContain(0x9ffe);
+    });
+
+    it('与 ASCII 首屏片配合：ASCII 在前、常用次之', () => {
+      const cps = [0x41, 0x4e00, 0x4e01, 0x9fff];
+      const chunks = partition(cps, strat({ baseSize: 1, commonFirst: true }));
+      expect(isAsciiOrPunct(chunks[0].codepoints[0])).toBe(true);
+      expect(chunks[1].codepoints).toContain(0x4e00);
+    });
+  });
 });

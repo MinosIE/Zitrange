@@ -57,6 +57,7 @@ export function Panel({
   step,
   title,
   hint,
+  tip,
   delay = 0,
   children,
   className = '',
@@ -64,6 +65,8 @@ export function Panel({
   step?: string;
   title: string;
   hint?: ReactNode;
+  /** 标题后的「?」图标，悬浮展示说明；常用于弱化、非阻断的提示 */
+  tip?: string;
   delay?: number;
   children: ReactNode;
   className?: string;
@@ -73,6 +76,7 @@ export function Panel({
       <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
         {step && <span className="zr-eyebrow">{step}</span>}
         <h2 className="font-song text-[15px] font-semibold tracking-wide text-ink-900">{title}</h2>
+        {tip && <HelpTip text={tip} />}
         {hint && (
           <>
             <div className="flex-1" />
@@ -82,6 +86,60 @@ export function Panel({
       </div>
       <div className="p-4">{children}</div>
     </section>
+  );
+}
+
+/** 标题旁的「?」图标，悬浮/聚焦展示说明 tooltip（portal 渲染避免被面板裁剪） */
+export function HelpTip({ text, className = '' }: { text: string; className?: string }) {
+  const [show, setShow] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!show) {
+      setCoords(null);
+      return;
+    }
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setCoords({ top: r.bottom + 6, left: r.left + r.width / 2 });
+  }, [show]);
+
+  return (
+    <>
+      <span
+        ref={ref}
+        role="img"
+        aria-label={text}
+        tabIndex={0}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onFocus={() => setShow(true)}
+        onBlur={() => setShow(false)}
+        className={`zr-rise inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-line text-[10px] font-semibold text-ink-400 transition-colors hover:border-ink-400 hover:text-ink-700 ${className}`}
+      >
+        ?
+      </span>
+      {show &&
+        coords &&
+        createPortal(
+          <div
+            role="tooltip"
+            style={{
+              position: 'fixed',
+              top: coords.top,
+              left: coords.left,
+              zIndex: 60,
+              transform: 'translateX(-50%)',
+            }}
+            className="w-56 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[11px] leading-relaxed text-ink-700 shadow-lift"
+          >
+            {text}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 

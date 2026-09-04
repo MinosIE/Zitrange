@@ -30,6 +30,13 @@ export interface PartitionStrategy {
    */
   includeAsciiPunct?: boolean;
   /**
+   * 常用字优先：开启后把「常用 3500 字（U+4E00–U+5BAB）」独立成一片（紧随 ASCII 首屏片），
+   * 其余字符按 baseSize 均匀切片。常用片常驻高频区间，页面通常只命中它即可首屏成形，
+   * 罕见字片按需懒加载。对应 docs/font-split-plan.md 方案 B 的 common/ext 双层结构；
+   * 仅对含 CJK 的字符集有意义，纯 ASCII 字体开启无额外作用。默认 false。
+   */
+  commonFirst?: boolean;
+  /**
    * 是否把 ASCII/标点单独成首屏片（yipai 的 basic 片），默认 true。
    * 关闭后这些字符并入正文片、第 0 片不再单独存在，首屏局部性收益减弱。
    */
@@ -67,6 +74,8 @@ export interface FontInfo {
   isVariable: boolean;
   /** 字体在集合文件（.ttc/.otc）中的索引，非集合文件为 0 */
   fontNumber: number;
+  /** 字体实际支持的码位（升序）；由 inspect 填充，用于覆盖形态分析与兜底字表 */
+  codepoints?: number[];
 }
 
 export interface ValidationIssue {
