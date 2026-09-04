@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { inspectFont } from '../adapters/fontEngine';
 import { processFont } from '../adapters/pipeline';
+import { checkEnv } from '../adapters/deps';
 import type { OutputFormat, PartitionStrategy } from '../core/types';
 
 const PORT = Number(process.env.PORT ?? 5174);
@@ -46,6 +47,14 @@ function readBody(req: any): Promise<any> {
   });
 }
 
+/** F5.1 守卫：依赖缺失时以 503 + 安装步骤回给前端，避免 cryptic 子进程报错 */
+async function depsOkOr(res: any): Promise<boolean> {
+  const env = await checkEnv();
+  if (env.ok) return true;
+  sendJson(res, 503, { error: `引擎依赖缺失，请先安装后重试：\n${env.steps.join('\n')}` });
+  return false;
+}
+
 export const handler = async (req: any, res: any) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
@@ -75,9 +84,16 @@ export const handler = async (req: any, res: any) => {
       });
     }
 
+    // 依赖自检（F5.1）：前端加载时调用；force=1 安装完成后重跑
+    if (req.method === 'GET' && pathname === '/api/deps') {
+      const env = await checkEnv(url.searchParams.get('force') === '1');
+      return sendJson(res, 200, env);
+    }
+
     if (req.method === 'POST' && pathname === '/api/inspect') {
       const body = await readBody(req);
       if (!body.path) return sendJson(res, 400, { error: '缺少 path' });
+      if (!(await depsOkOr(res))) return;
       const info = await inspectFont(body.path, body.fontNumber ?? 0);
       return sendJson(res, 200, info);
     }
@@ -85,6 +101,7 @@ export const handler = async (req: any, res: any) => {
     if (req.method === 'POST' && pathname === '/api/process') {
       const body = await readBody(req);
       if (!body.path) return sendJson(res, 400, { error: '缺少 path' });
+      if (!(await depsOkOr(res))) return;
       const jobId = randomUUID().slice(0, 8);
       const result = await processFont({
         fontPath: body.path,
@@ -160,9 +177,41 @@ export function createApiServer(): ReturnType<typeof createServer> {
   return createServer(handler);
 }
 
+/** F5.1 启动自检：逐项打印依赖状态，缺失时给出安装命令 */
+async function logDeps() {
+  const env = await checkEnv();
+  console.log(env.ok ? '[api] 依赖检查通过' : '[api] 依赖检查未通过，部分功能不可用');
+  for (const it of env.items) {
+    const mark = it.state === 'ok' ? '✓' : it.required ? '✗' : '◌';
+    const got =
+      it.state === 'ok'
+        ? it.found ?? ''
+        : it.state === 'outdated'
+          ? `${it.found}（需要 ${it.need}）`
+          : `未找到${it.need ? `（需要 ${it.need}）` : ''}`;
+    const opt = it.required ? '' : '（可选）';
+    console.log(`  [api] ${mark} ${it.label}${opt} ${got}`);
+  }
+  if (env.steps.length > 0) {
+    console.log(`[api] 请先执行：`);
+    for (const s of env.steps) console.log(`      ${s}`);
+  }
+  if (env.optionalSteps.length > 0) {
+    console.log(`[api] 可选优化：`);
+    for (const s of env.optionalSteps) console.log(`      ${s}`);
+  }
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  createApiServer().listen(PORT, () => {
-    console.log(`[api] listening on http://localhost:${PORT}`);
-    console.log(`[api] output dir: ${OUTPUT_DIR}`);
-  });
+  (async () => {
+    try {
+      await logDeps();
+    } catch {
+      // 探测失败不阻塞服务启动
+    }
+    createApiServer().listen(PORT, () => {
+      console.log(`[api] listening on http://localhost:${PORT}`);
+      console.log(`[api] output dir: ${OUTPUT_DIR}`);
+    });
+  })();
 }

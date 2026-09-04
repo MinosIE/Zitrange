@@ -50,6 +50,39 @@ export function inspectFont(path: string, fontNumber = 0): Promise<InspectResult
   return post<InspectResult>('/inspect', { path, fontNumber });
 }
 
+/* ------------------------------------------------------------------ */
+/* 引擎依赖自检（F5.1）                                                */
+/* ------------------------------------------------------------------ */
+
+export interface DepItem {
+  key: string;
+  label: string;
+  required: boolean;
+  state: 'ok' | 'missing' | 'outdated';
+  found: string | null;
+  need: string | null;
+  fix: string | null;
+}
+
+export interface EnvReport {
+  ok: boolean;
+  python: string | null;
+  pythonKind: 'venv' | 'system' | null;
+  items: DepItem[];
+  steps: string[];
+  optionalSteps: string[];
+}
+
+/** 依赖自检；force=true 用于「重新检测」（安装完成后再次核对） */
+export async function fetchDeps(force = false): Promise<EnvReport> {
+  const r = await fetch(`${BASE}/deps${force ? '?force=1' : ''}`, { method: 'GET' });
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({}));
+    throw new Error(err.error || `依赖检查失败 (${r.status})`);
+  }
+  return r.json() as Promise<EnvReport>;
+}
+
 export function processFont(payload: {
   path: string;
   fontNumber?: number;

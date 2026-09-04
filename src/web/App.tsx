@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { extractCharFreq, FALLBACK_SIZES, ASCII_PUNCT } from '@core/charset';
 import type { OutputFormat, PartitionStrategy } from '@core/types';
 import { normalizeStrategy } from '@core/strategy';
-import { processFont, type ProcessResult } from './api';
+import { fetchDeps, processFont, type EnvReport, type ProcessResult } from './api';
+import { EnvBanner } from './components/EnvBanner';
 import { useTheme } from './useTheme';
 import { CharSourcePanel } from './components/CharSourcePanel';
 import { FontSourcePanel, type LoadedFont } from './components/FontSourcePanel';
@@ -41,6 +42,21 @@ export default function App() {
   const [result, setResult] = useState<ProcessResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // 引擎依赖状态（F5.1）：null = 尚未完成检查 / 检查接口不可用
+  const [deps, setDeps] = useState<EnvReport | null>(null);
+
+  async function refreshDeps(force = false) {
+    try {
+      setDeps(await fetchDeps(force));
+    } catch {
+      // API 服务未起或接口不可用时静默跳过，不影响其余流程
+      setDeps(null);
+    }
+  }
+
+  useEffect(() => {
+    void refreshDeps();
+  }, []);
 
   // ASCII/标点保底会注入的字符数（受字体支持裁剪），用于估算字符集规模。
   const asciiGuardCount = useMemo(() => {
@@ -140,15 +156,17 @@ export default function App() {
               <span className="flex items-center gap-1.5 text-[11px] text-ink-500">
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
-                    busy ? 'zr-dot-live bg-brand' : 'bg-success'
+                    busy ? 'zr-dot-live bg-brand' : deps && !deps.ok ? 'bg-danger' : 'bg-success'
                   }`}
                 />
-                {busy ? '处理中' : '就绪'}
+                {busy ? '处理中' : deps && !deps.ok ? '依赖缺失' : '就绪'}
               </span>
             </div>
             <ThemeToggle theme={theme} onToggle={toggle} />
           </div>
         </header>
+
+        {deps && <EnvBanner report={deps} onRetry={() => refreshDeps(true)} />}
 
         {error && (
           <div className="rounded-lg border-l-2 border-danger bg-danger-bg px-3 py-2 text-[12px] text-danger">
