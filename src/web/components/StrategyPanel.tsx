@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { validate } from '@core/validate';
 import type {
   FallbackCharset,
@@ -7,6 +7,7 @@ import type {
   PartitionStrategy,
   StrategyMode,
 } from '@core/types';
+import { STRATEGY_PRESET_ORDER, STRATEGY_PRESETS, applyPreset, detectPreset, estimatePreset, type StrategyPreset } from '@core/presets';
 import { ChipGroup, Dropdown, Field, Note, NumberField, Panel, Segmented, Switch } from './ui';
 
 /**
@@ -68,6 +69,49 @@ const FORMATS: { value: OutputFormat; label: string; hint: string }[] = [
   { value: 'ttf', label: 'ttf', hint: '无压缩，供原生 App、PDF 内嵌等非 Web 场景' },
 ];
 
+/** F2.10 三档预设的展示文案（尺寸口径见 @core/presets；数字量级随当前字符集联动，见下方换算） */
+const PRESET_META: Record<StrategyPreset, { label: string; desc: string }> = {
+  volume: {
+    label: '最小体积',
+    desc: '首片约 200 字起、按 ×1.4 递增到 1500 封顶：高频字集中在小首片，首屏只下载用到的那几片，传输量最小。',
+  },
+  balance: {
+    label: '均衡',
+    desc: '请求数与首屏体积折中，目标 20 片以内——即当前默认行为。',
+  },
+  requests: {
+    label: '最少请求',
+    desc: '@font-face 数量最少，目标 8 次请求以内，代价是单页要加载的字节更多。',
+  },
+};
+
+/**
+ * 简介里的「当前规模换算」短句：预设不再是「约 2 万字」式的固定假设，而是
+ * 按当前字符集规模（全量 = 字体 cmap 码位数，纯输入 = 文本+兜底字数）实时给出量级。
+ * 仅对按字数切分的模式（hybrid / frequency）换算；block 给码块数口径；
+ * codepoint 片数由码位连续度决定、无法由字数推断，不换算。
+ */
+function presetScaleClause(
+  preset: StrategyPreset,
+  charCount: number,
+  mode: StrategyMode,
+): string {
+  if (charCount <= 0) return '';
+  const target = STRATEGY_PRESETS[preset].targetSlices;
+  if (mode === 'block') {
+    return target && target > 0
+      ? `码位跨度均分约 ${target} 个码块（每块字数随字形分布不等）`
+      : '';
+  }
+  if (mode === 'codepoint') return '';
+  const n = charCount.toLocaleString('zh-CN');
+  const e = estimatePreset(preset, charCount);
+  if (e.slices <= 0) return '';
+  return e.perSlice
+    ? `按当前约 ${n} 字 → 约 ${e.slices} 片、单片约 ${e.perSlice} 字`
+    : `按当前约 ${n} 字 → 全部载满约 ${e.slices} 片`;
+}
+
 export function StrategyPanel({
   font,
   charCount,
@@ -87,6 +131,23 @@ export function StrategyPanel({
   onToggleFormat: (f: OutputFormat) => void;
   delay?: number;
 }) {
+  // F2.10 预设识别：尺寸参数与三档模板之一完全一致则高亮该档，否则为「自定义」
+  const preset = detectPreset(strategy);
+  const presetOptions: { value: StrategyPreset | 'custom'; label: string }[] = [
+    ...STRATEGY_PRESET_ORDER.map((id) => ({ value: id, label: PRESET_META[id].label })),
+    ...(preset === 'custom' ? [{ value: 'custom' as const, label: '自定义' }] : []),
+  ];
+
+  // 预设下的说明：取向句 + 随当前字符集规模的实时换算（无内容时退回取向句）
+  const presetHint = useMemo(() => {
+    if (preset === 'custom') {
+      return '尺寸参数已手动调整，不再与三档预设一致；点选上方任一档可一键恢复默认组合。';
+    }
+    const clause = presetScaleClause(preset, charCount, strategy.mode);
+    if (!clause) return PRESET_META[preset].desc;
+    return `${PRESET_META[preset].desc.replace(/。$/, '')}；${clause}。`;
+  }, [preset, charCount, strategy.mode]);
+
   // 切换模式不再联动兜底字表：两者已解耦，由 normalizeStrategy 统一约束值域。
   const handleModeChange = (mode: StrategyMode) => onStrategy({ ...strategy, mode });
 
@@ -156,6 +217,9 @@ export function StrategyPanel({
       ? '片数上限：段数超过时合并相邻段，控制 @font-face 数量'
       : '按字形总数推导固定每片字数（覆盖单片字数/递增系数），避免大字符集切出几十片';
 
+  // 「高级」折叠：默认收起，只露出 F2.10 三档预设（PRD F2.10 精简决策成本）
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
   return (
     <Panel step="03" title="分片策略" delay={delay}>
       <div className="flex flex-col gap-4">
@@ -163,110 +227,146 @@ export function StrategyPanel({
           <ChipGroup values={format} onToggle={onToggleFormat} options={FORMATS} />
         </Field>
 
-        {showMode && (
-          <div className="flex flex-col gap-1.5">
-            <Field label="分片模式">
-              <Segmented
-                value={displayMode}
-                onChange={handleModeChange}
-                options={modeOptions}
-              />
-            </Field>
-            <span className="text-[10px] leading-snug text-ink-300">{modeHint}</span>
-          </div>
-        )}
+        <div className="flex flex-col gap-1.5">
+          <Field label="策略预设">
+            <Segmented
+              value={preset}
+              onChange={(p) => p !== 'custom' && onStrategy(applyPreset(strategy, p))}
+              options={presetOptions}
+            />
+          </Field>
+          <span className="text-[10px] leading-snug text-ink-300">{presetHint}</span>
+        </div>
 
-        {/* 分片尺寸：两种档位互斥，不同时出现；码块模式只提供「码块数量」 */}
-        <div className="flex flex-col gap-2.5">
-          {!isBlock && (
-            <Field label="分片尺寸">
-              <Segmented
-                value={sizeMode}
-                onChange={handleSizeMode}
-                options={SIZE_MODES}
-              />
-            </Field>
-          )}
-          {sizeMode === 'base' ? (
-            <div className={`grid gap-2.5 ${growth > 1 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-              <Field label="单片字数" hint="默认 500">
-                <NumberField
-                  value={strategy.baseSize}
-                  onChange={(baseSize) => onStrategy({ ...strategy, baseSize })}
-                />
-              </Field>
-              <Field label="递增系数" hint="1 = 固定分片">
-                <NumberField
-                  value={strategy.growth}
-                  step={0.05}
-                  min={0}
-                  onChange={(g) => onStrategy({ ...strategy, growth: g })}
-                />
-              </Field>
-              {/* 单片上限仅在递增系数 > 1 时有意义：growth<=1 时 chunkSizeAt 直接返回 baseSize */}
-              {growth > 1 && (
-                <Field label="单片上限" hint="默认 1000">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((v) => !v)}
+          className="flex items-center gap-1 self-start text-[11px] text-ink-400 hover:text-ink-700"
+        >
+          <svg
+            viewBox="0 0 12 8"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            className={`h-3 w-3 shrink-0 transition-transform duration-150 ${
+              advancedOpen ? 'rotate-180' : ''
+            }`}
+          >
+            <path d="M1 1.5L6 6.5L11 1.5" />
+          </svg>
+          {advancedOpen ? '收起高级设置' : '展开高级设置'}
+          <span className="text-ink-300">分片模式 · 单片大小 · 兜底字表 · ASCII</span>
+        </button>
+
+        {advancedOpen && (
+          <div className="flex flex-col gap-4 border-t border-line pt-3">
+            {showMode && (
+              <div className="flex flex-col gap-1.5">
+                <Field label="分片模式">
+                  <Segmented
+                    value={displayMode}
+                    onChange={handleModeChange}
+                    options={modeOptions}
+                  />
+                </Field>
+                <span className="text-[10px] leading-snug text-ink-300">{modeHint}</span>
+              </div>
+            )}
+
+            {/* 分片尺寸：两种档位互斥，不同时出现；码块模式只提供「码块数量」 */}
+            <div className="flex flex-col gap-2.5">
+              {!isBlock && (
+                <Field label="分片尺寸">
+                  <Segmented
+                    value={sizeMode}
+                    onChange={handleSizeMode}
+                    options={SIZE_MODES}
+                  />
+                </Field>
+              )}
+              {sizeMode === 'base' ? (
+                <div className={`grid gap-2.5 ${growth > 1 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  <Field label="单片字数" hint="默认 500">
+                    <NumberField
+                      value={strategy.baseSize}
+                      onChange={(baseSize) => onStrategy({ ...strategy, baseSize })}
+                    />
+                  </Field>
+                  <Field label="递增系数" hint="1 = 固定分片">
+                    <NumberField
+                      value={strategy.growth}
+                      step={0.05}
+                      min={0}
+                      onChange={(g) => onStrategy({ ...strategy, growth: g })}
+                    />
+                  </Field>
+                  {/* 单片上限仅在递增系数 > 1 时有意义：growth<=1 时 chunkSizeAt 直接返回 baseSize */}
+                  {growth > 1 && (
+                    <Field label="单片上限" hint="默认 1000">
+                      <NumberField
+                        value={strategy.maxSize}
+                        onChange={(maxSize) => onStrategy({ ...strategy, maxSize })}
+                      />
+                    </Field>
+                  )}
+                </div>
+              ) : (
+                <Field label={isBlock ? '码块数量' : '目标片数'} hint={targetHint}>
                   <NumberField
-                    value={strategy.maxSize}
-                    onChange={(maxSize) => onStrategy({ ...strategy, maxSize })}
+                    value={targetSlices}
+                    min={0}
+                    onChange={handleTargetSlices}
                   />
                 </Field>
               )}
             </div>
-          ) : (
-            <Field label={isBlock ? '码块数量' : '目标片数'} hint={targetHint}>
-              <NumberField
-                value={targetSlices}
-                min={0}
-                onChange={handleTargetSlices}
+
+            <Field
+              label="兜底字表"
+              hint={
+                strategy.useFontCmap
+                  ? '全量模式已覆盖 cmap 全部字形，兜底字表不再生效'
+                  : '你输入的字之外，按通用字频补全；选「不兜底」则只切你输入的字'
+              }
+            >
+              <Dropdown
+                value={strategy.fallback}
+                onChange={(fallback) => onStrategy({ ...strategy, fallback })}
+                options={FALLBACKS}
+                disabled={strategy.useFontCmap}
               />
             </Field>
-          )}
-        </div>
 
-        <Field
-          label="兜底字表"
-          hint={
-            strategy.useFontCmap
-              ? '全量模式已覆盖 cmap 全部字形，兜底字表不再生效'
-              : '你输入的字之外，按通用字频补全；选「不兜底」则只切你输入的字'
-          }
-        >
-          <Dropdown
-            value={strategy.fallback}
-            onChange={(fallback) => onStrategy({ ...strategy, fallback })}
-            options={FALLBACKS}
-            disabled={strategy.useFontCmap}
-          />
-        </Field>
-
-        <Field
-          label="ASCII/标点保底"
-          hint={
-            strategy.useFontCmap
-              ? '全量模式已含 ASCII/标点，此选项无额外作用'
-              : '默认关闭，只切你输入的字符。开启会额外注入数字 / 字母 / 中英文标点，保证首屏可渲染'
-          }
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[12px] text-ink-600">数字 / 字母 / 标点保底</span>
-            <Switch
-              checked={asciiGuardOn}
-              onChange={handleAsciiGuardToggle}
+            <Field
               label="ASCII/标点保底"
-              disabled={strategy.useFontCmap}
-            />
-          </div>
-        </Field>
+              hint={
+                strategy.useFontCmap
+                  ? '全量模式已含 ASCII/标点，此选项无额外作用'
+                  : '默认关闭，只切你输入的字符。开启会额外注入数字 / 字母 / 中英文标点，保证首屏可渲染'
+              }
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[12px] text-ink-600">数字 / 字母 / 标点保底</span>
+                <Switch
+                  checked={asciiGuardOn}
+                  onChange={handleAsciiGuardToggle}
+                  label="ASCII/标点保底"
+                  disabled={strategy.useFontCmap}
+                />
+              </div>
+            </Field>
 
-        <Field label="ASCII 首屏片" hint={asciiSliceHint}>
-          <Segmented
-            value={asciiSliceMode}
-            onChange={handleAsciiSliceMode}
-            options={ASCII_SLICE_MODES}
-            disabled={!asciiRelevant}
-          />
-        </Field>
+            <Field label="ASCII 首屏片" hint={asciiSliceHint}>
+              <Segmented
+                value={asciiSliceMode}
+                onChange={handleAsciiSliceMode}
+                options={ASCII_SLICE_MODES}
+                disabled={!asciiRelevant}
+              />
+            </Field>
+          </div>
+        )}
 
         {issues.length > 0 && (
           <div className="flex flex-col gap-1.5 border-t border-line pt-3">
