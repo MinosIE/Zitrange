@@ -40,7 +40,7 @@ export function CharSourcePanel({
         ) : stats.unique > 0 ? (
           <span className="zr-num">识别到 {stats.unique.toLocaleString()} 个字</span>
         ) : (
-          <span className="text-ink-300">尚未粘贴，将只用常用字表</span>
+          <span className="text-ink-300">尚未粘贴，将只用兜底字表</span>
         )
       }
     >
@@ -75,7 +75,7 @@ export function CharSourcePanel({
               onChange={(e) => onTextChange(e.target.value)}
               placeholder={
                 '粘贴网站的正文、导航、标题、按钮文案……\n' +
-                '留空也可以，工具会退回到「常用字表」来选字。'
+                '留空也可以，工具会退回到「兜底字表」来选字。'
               }
             />
 

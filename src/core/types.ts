@@ -16,7 +16,11 @@ export type FontDisplay = 'swap' | 'block' | 'fallback' | 'optional';
 export interface PartitionStrategy {
   /** 每片字数：按码位均匀切片时的固定片大小，默认 4000 */
   baseSize: number;
-  /** 兜底字表：仅「仅用户内容」模式生效。'common' = 补全通用常用字表前 3500 字 */
+  /**
+   * 兜底字表（决定「切哪些字」）：仅「仅用户内容」模式生效，全量模式忽略。
+   * 'common' = 补全通用常用字表前 3500 字，即往字符集里补字以防缺字；
+   * 只影响字符集范围，与 commonFirst（决定「怎么切」）是彼此独立的两个维度。
+   */
   fallback: FallbackCharset;
   /**
    * 拆分全量字体：用字体 cmap 的全部码位作为字符集，绕过兜底字表上限。
@@ -30,9 +34,10 @@ export interface PartitionStrategy {
    */
   includeAsciiPunct?: boolean;
   /**
-   * 常用字优先：开启后把「常用 3500 字（U+4E00–U+5BAB）」独立成一片（紧随 ASCII 首屏片），
-   * 其余字符按 baseSize 均匀切片。常用片常驻高频区间，页面通常只命中它即可首屏成形，
-   * 罕见字片按需懒加载。对应 docs/font-split-plan.md 方案 B 的 common/ext 双层结构；
+   * 常用字优先（决定「怎么切」）：开启后把「常用 3500 字（U+4E00–U+5BAB）」独立成一片
+   * （紧随 ASCII 首屏片），其余字符按 baseSize 均匀切片。常用片常驻高频区间，
+   * 页面通常只命中它即可首屏成形，罕见字片按需懒加载（common / ext 双层结构）。
+   * 只影响分片顺序、不增删字符集，与 fallback（决定「切哪些字」）互不相关。
    * 仅对含 CJK 的字符集有意义，纯 ASCII 字体开启无额外作用。默认 false。
    */
   commonFirst?: boolean;

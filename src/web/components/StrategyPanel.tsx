@@ -26,8 +26,8 @@ const PRESET_META: Record<StrategyPreset, { label: string; desc: string }> = {
 };
 
 const FALLBACKS: { value: FallbackCharset; label: string }[] = [
-  { value: 'none', label: '不兜底' },
-  { value: 'common', label: '补全常用字' },
+  { value: 'none', label: '不补全' },
+  { value: 'common', label: '补全常用 3500 字' },
 ];
 
 const FORMATS: { value: OutputFormat; label: string; hint: string }[] = [
@@ -119,6 +119,14 @@ export function StrategyPanel({
 
   const fullMode = !!strategy.useFontCmap;
 
+  // 「补全常用 3500 字」与「常用字优先」都涉及 3500 字但维度不同（前者补字、后者分片），
+  // 同开时在开关旁显式点明区别，避免误以为二者是同一件事。
+  const commonFirstHint =
+    '决定「怎么切」：把常用 3500 字（U+4E00–U+5BAB）独立成首片优先加载，罕见字片按需懒加载；不增删字符集。' +
+    (!fullMode && strategy.fallback === 'common'
+      ? '与上方「补全常用 3500 字」区分：那是往字符集补字（切哪些字），本开关只决定分片顺序。'
+      : '');
+
   return (
     <Panel step="03" title="分片策略" tip={oneSliceIssue?.text} delay={delay}>
       <div className="flex flex-col gap-4">
@@ -156,10 +164,7 @@ export function StrategyPanel({
           </div>
         </Field>
 
-        <Field
-          label="常用字优先"
-          hint="把常用 3500 字（U+4E00–U+5BAB）独立成首片，其余按每片字数切。常用片常驻高频区间，页面通常只命中它即首屏成形，罕见字片按需懒加载"
-        >
+        <Field label="常用字优先 · 怎么切" hint={commonFirstHint}>
           <div className="flex items-center justify-between gap-2">
             <span className="text-[12px] text-ink-600">常用 3500 字独立成首片</span>
             <Switch
@@ -172,8 +177,8 @@ export function StrategyPanel({
 
         {!fullMode && (
           <Field
-            label="兜底字表"
-            hint="只切你输入的字之外，按通用常用字表补全；选「不兜底」则只切你输入的字"
+            label="兜底字表 · 切哪些字"
+            hint="决定「切哪些字」：把你输入的字之外的常用 3500 字补进字符集，防止缺字；不影响分片方式。选「不补全」则只切你输入的字。"
           >
             <Dropdown
               value={strategy.fallback}
