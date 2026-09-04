@@ -2,57 +2,38 @@ import { describe, it, expect } from 'vitest';
 import { normalizeStrategy } from './strategy';
 import type { PartitionStrategy } from './types';
 
-const base: PartitionStrategy = {
-  mode: 'hybrid',
-  baseSize: 500,
-  growth: 1.35,
-  maxSize: 1000,
+const base = (over: Partial<PartitionStrategy> = {}): PartitionStrategy => ({
+  baseSize: 4000,
   fallback: 'none',
-};
+  ...over,
+});
 
 describe('normalizeStrategy', () => {
-  it('全量模式：保留 frequency/codepoint/block，把 hybrid/site 收敛为 frequency', () => {
-    expect(normalizeStrategy({ ...base, useFontCmap: true, mode: 'frequency' }).mode).toBe(
-      'frequency',
+  it('缺失字段给默认值', () => {
+    const s = normalizeStrategy({ baseSize: 4000, fallback: 'none' });
+    expect(s.useFontCmap).toBe(false);
+    expect(s.includeAsciiPunct).toBe(true);
+    expect(s.asciiFirst).toBe(true);
+    expect(s.asciiAlwaysLoad).toBe(false);
+  });
+
+  it('保留显式合法字段', () => {
+    const s = normalizeStrategy(
+      base({ fallback: 'common', useFontCmap: true, asciiFirst: false, asciiAlwaysLoad: true, maxChunks: 16 }),
     );
-    expect(normalizeStrategy({ ...base, useFontCmap: true, mode: 'codepoint' }).mode).toBe(
-      'codepoint',
-    );
-    expect(normalizeStrategy({ ...base, useFontCmap: true, mode: 'block' }).mode).toBe('block');
-    // 默认 DEFAULT_STRATEGY 就是 hybrid + 全量，必须收敛，否则界面与实际不一致
-    expect(normalizeStrategy({ ...base, useFontCmap: true }).mode).toBe('frequency');
-    expect(normalizeStrategy({ ...base, useFontCmap: true, mode: 'site' }).mode).toBe('frequency');
+    expect(s.fallback).toBe('common');
+    expect(s.useFontCmap).toBe(true);
+    expect(s.asciiFirst).toBe(false);
+    expect(s.asciiAlwaysLoad).toBe(true);
+    expect(s.maxChunks).toBe(16);
   });
 
-  it('纯输入 + 不兜底：恒为 hybrid（界面据此隐藏「分片模式」）', () => {
-    expect(normalizeStrategy({ ...base, mode: 'hybrid' }).mode).toBe('hybrid');
-    expect(normalizeStrategy({ ...base, mode: 'frequency' }).mode).toBe('hybrid');
-    expect(normalizeStrategy({ ...base, mode: 'codepoint' }).mode).toBe('hybrid');
-    expect(normalizeStrategy({ ...base, mode: 'block' }).mode).toBe('hybrid');
-    expect(normalizeStrategy({ ...base, mode: 'site' }).mode).toBe('hybrid');
+  it('baseSize < 1 回退到 4000', () => {
+    expect(normalizeStrategy(base({ baseSize: -5 })).baseSize).toBe(4000);
+    expect(normalizeStrategy(base({ baseSize: 0 })).baseSize).toBe(4000);
   });
 
-  it('纯输入 + 有兜底：保留 hybrid/frequency/codepoint，收敛 block 与 site', () => {
-    const fb = { ...base, fallback: 'common-3500' as const };
-    expect(normalizeStrategy({ ...fb, mode: 'hybrid' }).mode).toBe('hybrid');
-    expect(normalizeStrategy({ ...fb, mode: 'frequency' }).mode).toBe('frequency');
-    expect(normalizeStrategy({ ...fb, mode: 'codepoint' }).mode).toBe('codepoint');
-    expect(normalizeStrategy({ ...fb, mode: 'block' }).mode).toBe('hybrid');
-    expect(normalizeStrategy({ ...fb, mode: 'site' }).mode).toBe('hybrid');
-  });
-
-  it('幂等，且已合法时返回入参引用（避免无谓重渲染）', () => {
-    const s: PartitionStrategy = { ...base, fallback: 'common-3500', mode: 'frequency' };
-    const once = normalizeStrategy(s);
-    expect(once).toBe(s);
-    expect(normalizeStrategy(once)).toBe(once);
-  });
-
-  it('不改动除 mode 以外的字段', () => {
-    const s: PartitionStrategy = { ...base, mode: 'block', targetSlices: 20, asciiFirst: false };
-    const out = normalizeStrategy(s);
-    expect(out.targetSlices).toBe(20);
-    expect(out.asciiFirst).toBe(false);
-    expect(out.mode).toBe('hybrid');
+  it('maxChunks 仅在显式 > 0 时保留', () => {
+    expect(normalizeStrategy(base()).maxChunks).toBeUndefined();
   });
 });

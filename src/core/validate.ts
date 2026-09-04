@@ -27,23 +27,7 @@ export function validate(input: ValidationInput): ValidationIssue[] {
   }
 
   if (strategy.baseSize < 1) {
-    issues.push({ id: 'E_BASE', level: 'warn', text: '单片字数（baseSize）必须 ≥ 1。' });
-  }
-
-  if (strategy.maxSize < strategy.baseSize) {
-    issues.push({
-      id: 'E_MAX',
-      level: 'warn',
-      text: '单片上限（maxSize）小于基础片大小，分片将退化为固定大小。',
-    });
-  }
-
-  if (strategy.growth < 1) {
-    issues.push({
-      id: 'E_GROWTH',
-      level: 'warn',
-      text: '递增系数 < 1 会越切越小，已按固定分片处理。',
-    });
+    issues.push({ id: 'E_BASE', level: 'warn', text: '每片字数（baseSize）必须 ≥ 1。' });
   }
 
   if (format.length === 0) {
@@ -55,16 +39,6 @@ export function validate(input: ValidationInput): ValidationIssue[] {
       id: 'W_TTF',
       level: 'warn',
       text: '仅输出 TTF 会显著增大体积且无法利用浏览器分片缓存，建议至少保留 woff2。',
-    });
-  }
-
-  // 注：「字频 + 不兜底」不再告警——只切你输入的字、再按通用字频排序，是受支持的用法。
-
-  if (strategy.maxSize > 5000) {
-    issues.push({
-      id: 'W_BIGCHUNK',
-      level: 'warn',
-      text: '单片上限过大，单个文件可能 >1MB，影响首屏。建议 ≤ 800。',
     });
   }
 

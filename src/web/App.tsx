@@ -15,19 +15,14 @@ import { OutputPanel } from './components/OutputPanel';
 import { Empty, Panel, Stat, ThemeToggle, baseNameFromUrl } from './components/ui';
 
 const DEFAULT_STRATEGY: PartitionStrategy = {
-  mode: 'hybrid',
-  baseSize: 500,
-  growth: 1.35,
-  maxSize: 1000,
   // 默认开启「拆分全量字体」（整本字形入库，兜底/保底项此时无额外作用）。
-  // 用户关闭它后即切回「仅用户内容」：兜底字表置为不兜底、ASCII/标点保底关闭，
-  // 使切片只包含其输入文本（见下方 onUseFontCmapChange）。
-  fallback: 'none',
+  // 关闭后即切回「仅用户内容」：补全常用字、并保底注入 ASCII/标点（见 onUseFontCmapChange）。
+  baseSize: 4000,
+  fallback: 'common',
   useFontCmap: true,
-  includeAsciiPunct: false,
+  includeAsciiPunct: true,
   asciiFirst: true,
-  targetSlices: 20,
-  asciiAlwaysLoad: false,
+  asciiAlwaysLoad: true,
 };
 
 export default function App() {
@@ -190,8 +185,8 @@ export default function App() {
                 updateStrategy(
                   v
                     ? { ...strategy, useFontCmap: true }
-                    : // 关闭全量拆分 → 切回「仅用户内容」，避免残留兜底字表/保底字符
-                      { ...strategy, useFontCmap: false, fallback: 'none', includeAsciiPunct: false },
+                    : // 关闭全量拆分 → 切回「仅用户内容」：补全常用字、保底注入 ASCII/标点
+                      { ...strategy, useFontCmap: false, fallback: 'common', includeAsciiPunct: true },
                 )
               }
               fontCodepoints={font?.codepoints.length}

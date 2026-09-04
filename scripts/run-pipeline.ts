@@ -10,7 +10,7 @@ processFont({
   text,
   sampleText: text,
   format: ['woff2'],
-  strategy: { mode: 'hybrid', baseSize: 200, growth: 1.35, maxSize: 800, fallback: 'common-3500' },
+  strategy: { baseSize: 4000, fallback: 'common', useFontCmap: true, includeAsciiPunct: true, asciiFirst: true, asciiAlwaysLoad: true },
   outDir: '.tmp/out',
   baseName: 'demo',
 })

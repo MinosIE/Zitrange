@@ -9,13 +9,11 @@ import type {
 import {
   applyFallback,
   ASCII_PUNCT,
+  COMMON_TABLE,
   extractCharFreq,
   FALLBACK_SIZES,
   mergeCharFreq,
-  sortByFrequency,
-  sortByGlobalRank,
 } from '../core/charset';
-import { charFreqCodepoints } from '../core/assets/charfreq-zh';
 import { partition, isAsciiOrPunct } from '../core/partition';
 import { toUnicodeRange } from '../core/unicodeRange';
 import { estimateChunkSize, simulateLoad, type SimulateResult } from '../core/simulate';
@@ -56,7 +54,7 @@ export interface ProcessResult {
 export async function processFont(req: ProcessRequest): Promise<ProcessResult> {
   const font = await inspectFont(req.fontPath, req.fontNumber ?? 0);
 
-  // 1. 字符集（按模式构建，规则见 PRD §6.2.1）
+  // 1. 字符集：扫描文本（若有）
   const freqs: CharFreq[] = [];
   if (req.text) freqs.push(extractCharFreq(req.text));
   if (req.files) {
@@ -65,40 +63,30 @@ export async function processFont(req: ProcessRequest): Promise<ProcessResult> {
   const siteFreq = mergeCharFreq(...freqs);
 
   const supported = new Set(font.codepoints);
-  // 全局字频降序表，与字体支持的码位取交集（字体不含的字自动跳过，不会缺字）。
-  const table = charFreqCodepoints().filter((cp) => supported.has(cp));
 
-  // 2. 按模式组合「字源 × 兜底字表 × ASCII 保底」
-  const mode = req.strategy.mode;
-  const fbSize = FALLBACK_SIZES[req.strategy.fallback] ?? 0;
+  // 2. 组合「字源 × 兜底字表 × ASCII 保底」，得到最终字符集（顺序无关，partition 内部按码位重排）
   const freq: CharFreq = new Map(siteFreq);
-
   if (req.strategy.useFontCmap) {
-    // 全量模式：直接纳入字体 cmap 的全部码位，绕过兜底字表上限，
-    // 保证不漏任何字形（生僻字、扩展区、符号等一律切出）。
+    // 全量模式：直接纳入字体 cmap 的全部码位，绕过兜底字表上限，保证不漏任何字形。
     for (const cp of font.codepoints) {
       if (!freq.has(cp)) freq.set(cp, 0);
     }
-  } else if (mode !== 'site' && fbSize > 0) {
-    // 站点模式：只用扫描到的字，不补兜底。
-    // 混合 / 字频模式：按所选档位用全局字频表补全生僻字。
-    applyFallback(freq, table, fbSize);
+  } else {
+    // 仅用户内容：按所选档位用通用常用字表补全（'common' = 前 3500 字），'none' 不补。
+    const fbSize = FALLBACK_SIZES[req.strategy.fallback] ?? 0;
+    if (fbSize > 0) applyFallback(freq, COMMON_TABLE, fbSize);
   }
   // ASCII 与常用标点保底：默认纳入，确保产物含数字/字母/标点；可由 includeAsciiPunct 关闭。
-  // 站点模式只切用户文本，不再注入任何保底字符（含 ASCII/标点）。
-  if ((req.strategy.includeAsciiPunct ?? true) && mode !== 'site') {
+  // 全量模式 cmap 已含这些字，此处无额外作用。
+  if (req.strategy.includeAsciiPunct ?? true) {
     for (const cp of ASCII_PUNCT) {
       if (supported.has(cp) && !freq.has(cp)) freq.set(cp, 0);
     }
   }
-
-  // 排序：字频模式忽略站点真实频次，一律按全局字频表名次（§6.2.1）；
-  // 站点 / 混合模式按实际频次，站点用字优先进入高频片。
-  const ordered =
-    mode === 'frequency' ? sortByGlobalRank(freq) : sortByFrequency(freq);
+  const ordered = [...freq.keys()];
   const charsetSize = ordered.length;
 
-  // 3. 分片
+  // 3. 分片：按码位均匀切片（basic/common/rare 结构）
   const chunks: Chunk[] = partition(ordered, req.strategy, {
     asciiFirst: req.strategy.asciiFirst ?? true,
   });
@@ -185,5 +173,3 @@ function toCss(
     })
     .join('\n\n');
 }
-
-

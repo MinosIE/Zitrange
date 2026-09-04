@@ -62,43 +62,9 @@ export function mergeCharFreq(...maps: CharFreq[]): CharFreq {
 }
 
 /**
- * 按出现次数降序排列。
- * 次数相同时按码位升序，保证结果稳定可复现（同频次字符不会因 Map 顺序抖动）。
- */
-export function sortByFrequency(freq: CharFreq): Codepoint[] {
-  return [...freq.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0] - b[0])
-    .map(([cp]) => cp);
-}
-
-/** 全局字频表码位 → 名次（越小越高频）。不在表中的字名次取其长度，排最后。 */
-const GLOBAL_RANK: ReadonlyMap<number, number> = (() => {
-  const table = charFreqCodepoints();
-  const m = new Map<number, number>();
-  table.forEach((cp, i) => m.set(cp, i));
-  return m;
-})();
-
-/**
- * 按全局字频表名次升序排列（PRD §6.2.1「字频」模式）。
- * 忽略字符在站点文本中的真实频次，一律以通用字频为准——
- * 这正是「内容不可预知时按通用频率优化」的含义。不在表中的字排最后，
- * 同名次时按码位升序，保证结果稳定可复现。
- */
-export function sortByGlobalRank(freq: CharFreq): Codepoint[] {
-  const max = GLOBAL_RANK.size;
-  return [...freq.keys()].sort((a, b) => {
-    const ra = GLOBAL_RANK.get(a) ?? max;
-    const rb = GLOBAL_RANK.get(b) ?? max;
-    return ra - rb || a - b;
-  });
-}
-
-/**
- * 用兜底字表补足字符集。
+ * 用兜底字表补足字符集（仅「仅用户内容」模式）。
  *
- * 兜底字的频次记为 0，因此排序时永远排在站点实际用字之后——
- * 这保证了「站点用字优先进入高频片」这一混合策略的核心语义（PRD F2.3）。
+ * 兜底字的频次记为 0，与「站点用字优先」语义一致（排序交给 partition 按码位处理）。
  *
  * @param count 取字表前 N 字；0 表示不补
  * @returns 实际补进来的字数
@@ -119,9 +85,11 @@ export function applyFallback(
   return added;
 }
 
+/** 兜底字表 → 取前 N 字；'common' = 通用常用字表前 3500 字 */
 export const FALLBACK_SIZES: Record<string, number> = {
   none: 0,
-  'common-3500': 3500,
-  'common-7000': 7000,
-  gb2312: 6763,
+  common: 3500,
 };
+
+/** 兜底字表所用的通用常用字序列（按字频降序，仅用于「补全常用字」） */
+export const COMMON_TABLE: readonly Codepoint[] = charFreqCodepoints();
