@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "中文字体分包与优化工具：按 unicode-range 拆分、压缩，产出按需加载的 woff2 与 CSS",
+  "description": "Chinese webfont subsetting & font splitting (CJK): split a font into woff2 chunks by unicode-range and generate @font-face CSS — 100% local. 中文字体分包 / 字体子集化与优化工具",
   "engines": {
     "node": ">=20"
   },

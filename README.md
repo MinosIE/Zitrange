@@ -1,9 +1,10 @@
 # Zitrange
 
-中文字体分包与优化工具：按 `unicode-range` 把一份中文字体拆成多个小体积子集（woff2/woff/ttf），
-并生成配套的 `@font-face` CSS，让浏览器**只下载页面真正用到的字**。
+**Chinese webfont subsetting & font splitting** — 中文字体分包 / 子集化工具：按 `unicode-range`
+把 CJK 字体切成 woff2 分片并生成 `@font-face`，让浏览器只下载页面真正用到的字。纯本地运行，
+字体文件全程不出本机。
 
-- 纯本地运行，**字体文件全程不出本机**
+- 支持 `.ttf` `.otf` `.woff2` `.ttc` `.otc`，输出 woff2 / woff / ttf
 - 分片模式与兜底字表可按需组合，分片产物可逐片或一次性下载
 - 内置「字体预览」「分片清单」「体积对比」「按需加载模拟」
 
@@ -19,6 +20,11 @@ Zitrange 会：
 3. 为每片生成带 `unicode-range` 的 `@font-face`，浏览器按需下载。
 
 典型效果：原始 12MB 字体 → 实际首屏只下载几十 KB 的命中分片。
+
+同赛道的工具还有 font-spider（字蛛）、fontmin、cn-font-split（中文网字计划）等：它们多在构建期
+自动扫描源码取字；Zitrange 走的是「本地可视化 + 可调分片策略 + 产物落盘」的路子——排序可按
+**文本频次 / 通用字频 / 码位邻近 / 码块均分**四种，配合兜底字表与 ASCII 首屏片自由组合，
+且不做任何上传。
 
 ---
 
@@ -227,3 +233,41 @@ output/           生成的分片产物落盘处
 | `npm run build` | 类型检查 + 构建 |
 | `npm run test` | 运行单元测试 |
 | `npm run typecheck` | 仅类型检查 |
+
+---
+
+## 12. English (quick start)
+
+Zitrange subsets and splits **CJK / Chinese webfonts** into small `woff2` chunks by `unicode-range`,
+then generates ready-to-paste `@font-face` CSS, so the browser downloads only the glyphs a page
+actually uses. Everything runs locally — your font files never leave the machine.
+
+```bash
+npm run setup   # .venv + fontTools / brotli + npm install
+npm run dev     # web UI on :5173, local API on :5174
+```
+
+1. **Load a font** — `.ttf` `.otf` `.woff2` `.ttc` `.otc`.
+2. **Pick the character set** — paste your site copy, or keep *split the whole font* (font cmap) on.
+3. **Choose a strategy preset** — smallest size / balanced / fewest requests. Advanced knobs
+   (ordering mode, fallback charset, ASCII first-slice) live in a collapsed section.
+4. **Generate** — compare sizes, inspect every chunk, copy the `@font-face` CSS, download chunks
+   one by one or as a single `.zip`. Output is written to `output/<jobId>/`.
+
+---
+
+## 13. Keywords / 关键词
+
+English: font subsetting · webfont subsetting · CJK font · Chinese webfont · font splitting ·
+font chunking · unicode-range · woff2 · fontTools · pyftsubset · web performance · self-hosted
+
+中文：中文字体分包 · 字体子集化 · 字体切割 · 中文 Web 字体优化 · webfont 压缩 ·
+按需加载字体 · 字体分片
+
+同类：font-spider（字蛛）· fontmin · cn-font-split（中文网字计划）· pyftsubset
+
+---
+
+## 14. License
+
+[MIT](./LICENSE) © 2026 yuxing.wang
