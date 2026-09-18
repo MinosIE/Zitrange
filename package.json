@@ -4,6 +4,26 @@
   "private": true,
   "type": "module",
   "description": "Chinese webfont subsetting & font splitting (CJK): split a font into woff2 chunks by unicode-range and generate @font-face CSS — 100% local. 中文字体分包 / 字体子集化与优化工具",
+  "keywords": [
+    "webfont",
+    "font-subsetting",
+    "font-splitting",
+    "subsetter",
+    "cjk",
+    "chinese",
+    "woff2",
+    "unicode-range",
+    "font-optimization",
+    "font-face",
+    "web-performance",
+    "local-first",
+    "privacy",
+    "fonttools",
+    "react",
+    "vite",
+    "typescript",
+    "web-app"
+  ],
   "engines": {
     "node": ">=20"
   },
